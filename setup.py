@@ -54,6 +54,7 @@ def setup_package():
         },
         install_requires = [
           'numpy',
+          'pyopencl',
         ],
         long_description = """
         dynamix - software for X-ray photon correlation spectroscopy
