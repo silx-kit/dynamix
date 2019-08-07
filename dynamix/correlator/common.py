@@ -34,6 +34,8 @@ class OpenclCorrelator(OpenclProcessing):
         self._set_bins(bins=bins)
         self._set_weights(weights=weights)
         self._configure_extra_options(extra_options)
+        self.is_cpu = (self.device.type == "CPU") # move to OpenclProcessing ?
+
 
     def _set_shape(self, shape):
         if np.isscalar(shape):
@@ -70,7 +72,6 @@ class OpenclCorrelator(OpenclProcessing):
             self.extra_options.update(extra_options)
 
     def _allocate_memory(self):
-        self.is_cpu = (self.device.type == "CPU") # move to OpenclProcessing ?
         self.d_output = parray.zeros(
             self.queue,
             self.output_shape,
