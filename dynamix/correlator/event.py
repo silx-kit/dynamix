@@ -4,6 +4,7 @@ from silx.opencl.processing import OpenclProcessing, KernelContainer
 from pyopencl.tools import dtype_to_ctype
 import pyopencl.array as parray
 from ..utils import get_opencl_srcfile
+from .common import OpenclCorrelator
 
 class EventCorrelator(OpenclCorrelator):
 
@@ -36,6 +37,8 @@ class EventCorrelator(OpenclCorrelator):
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DDTYPE=%s" % self.c_dtype,
+                "-DIDX_DTYPE=%s" % self.idx_c_dtype,
+                "-DSUM_WG_SIZE=%d" % 1024, # TODO tune ?
                 "-DMAX_EVT_COUNT=10" # TODO tune
             ]
         )

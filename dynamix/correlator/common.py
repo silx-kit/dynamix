@@ -95,7 +95,7 @@ class OpenclCorrelator(OpenclProcessing):
         compile_options = compile_options or self.get_compiler_options()
         try:
             self.program = cl.Program(self.ctx, allkernels_src).build(options=compile_options)
-        except (pyopencl.MemoryError, pyopencl.LogicError) as error:
+        except (cl.MemoryError, cl.LogicError) as error:
             raise MemoryError(error)
         else:
             self.kernels = KernelContainer(self.program)
