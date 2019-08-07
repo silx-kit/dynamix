@@ -7,7 +7,7 @@ kernel void event_correlator_oneQ(
     const global DTYPE* vol_data,
     const global int* ctr,
     global int* res_tau,
-    //~ global uint* res_t_tau,
+    global uint* sums,
     int image_height
 ) {
     uint x = get_global_id(0);
@@ -30,10 +30,36 @@ kernel void event_correlator_oneQ(
     }
 
     // Compute r(p, t, t-tau)
+    DTYPE sum = 0;
     for (int i_tau = 0; i_tau < n_events; i_tau++) {
+        atomic_add(sums + times[i_tau], data[i_tau]);
         for (int i_t = i_tau; i_t < n_events; i_t++) {
             int tau = times[i_t] - times[i_t - i_tau];
             atomic_add(res_tau + tau, data[i_t] * data[i_t - i_tau]);
         }
     }
 }
+
+
+#ifndef SCALE_FACTOR
+  #define SCALE_FACTOR 1.0f
+#endif
+
+
+// Normalize < <I(t, p) * I(t-tau, p)>_p >_t
+// by  <I(t, p)>_p * <I(t-tau, p)>_p >_t
+kernel void normalize_correlation_oneQ(
+    global int* res_int,
+    global float* res,
+    global uint* sums,
+    int Nt
+) {
+    uint tau = get_global_id(0);
+    if (tau >= Nt) return;
+    float s = 0.0f;
+    for (int t = tau; t < Nt; t++) {
+        s += (sums[t] * sums[t - tau]) * SCALE_FACTOR;
+    }
+    res[tau] = res_int[tau] / s;
+}
+

@@ -1,15 +1,12 @@
 import numpy as np
 from silx.opencl.common import pyopencl as cl
-from silx.opencl.processing import OpenclProcessing, KernelContainer
-from pyopencl.tools import dtype_to_ctype
-import pyopencl.cltypes as cltypes
 import pyopencl.array as parray
 from ..utils import get_opencl_srcfile
 from .common import OpenclCorrelator
 
 class EventCorrelator(OpenclCorrelator):
 
-    kernel_files = ["evtcorrelator.cl", "sums.cl"]
+    kernel_files = ["evtcorrelator.cl"]
 
 
     def __init__(
@@ -34,20 +31,19 @@ class EventCorrelator(OpenclCorrelator):
 
 
     def _setup_kernels(self):
-        kernel_files = ["evtcorrelator.cl", "sums.cl"]
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
             kernel_files=kernel_files,
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DDTYPE=%s" % self.c_dtype,
-                "-DIDX_DTYPE=%s" % self.idx_c_dtype,
                 "-DSUM_WG_SIZE=%d" % 1024, # TODO tune ?
-                "-DMAX_EVT_COUNT=%d" % self.max_events_count
+                "-DMAX_EVT_COUNT=%d" % self.max_events_count,
+                "-DSCALE_FACTOR=%f" % (1./(np.prod(self.shape))),
             ]
         )
         self.correlation_kernel = self.kernels.get_kernel("event_correlator_oneQ") # TODO tune
-        self.sum_kernel = self.kernels.get_kernel("compute_sums")
+        self.normalization_kernel = self.kernels.get_kernel("normalize_correlation_oneQ") # TODO tune
 
         self.grid = self.shape[::-1]
         self.wg = None # tune ?
@@ -62,6 +58,8 @@ class EventCorrelator(OpenclCorrelator):
         self._old_d_vol_times = None
         self._old_d_vol_data = None
         self._old_d_ctr = None
+        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32)
+        self.d_res = parray.zeros(self.queue, self.nframes, np.float32)
 
 
     def set_data(self, vol_times, vol_data, ctr):
@@ -104,10 +102,13 @@ class EventCorrelator(OpenclCorrelator):
             self.d_vol_data.data,
             self.d_ctr.data,
             self.d_res_int.data,
+            self.d_sums.data,
             np.int32(self.nframes)
         )
         evt.wait()
         self.profile_add(evt, "Event correlator")
+
+        """
 
         ###
         self.d_sums *= 1.0 / np.sqrt((np.prod(self.shape))) # !
@@ -122,6 +123,19 @@ class EventCorrelator(OpenclCorrelator):
 
         res = self.d_res_int.get()*1.0 / normalization # TODO
         return res
+        """
+
+        evt = self.normalization_kernel(
+            self.queue,
+            (self.nframes, 1),
+            None, # tune wg ?
+            self.d_res_int.data,
+            self.d_res.data,
+            self.d_sums.data,
+            np.int32(self.nframes)
+        )
+        return self.d_res.get()
+
 
 
     def build_events_volume(self, frames):
@@ -154,15 +168,6 @@ class EventCorrelator(OpenclCorrelator):
             ctr[R, C] += 1
 
         return volume_times, volume_data, ctr
-
-
-
-
-
-
-
-
-
 
 
 

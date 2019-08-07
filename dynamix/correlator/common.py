@@ -78,7 +78,6 @@ class OpenclCorrelator(OpenclProcessing):
             self.output_dtype
         )
         self.d_norm_mask = parray.to_device(self.queue, self.weights)
-        self.d_sums = parray.zeros(self.queue, self.nframes, self.output_dtype)
 
 
     # Overwrite OpenclProcessing.compile_kernel, as it does not support
