@@ -27,18 +27,27 @@ class DenseCorrelator(OpenclCorrelator):
         self._setup_kernels()
         self._allocate_arrays()
 
+
     def _setup_kernels(self):
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
             kernel_files=kernel_files,
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
+                "-DNUM_BINS=%d" % self.n_bins,
                 "-DDTYPE=%s" % self.c_dtype,
+                "-DDTYPE_SUMS=%s" % self.c_sums_dtype,
+                "-DN_FRAMES=%d" % self.nframes,
+                "-DUSE_SHARED=%d" % 0, # <
+                "-DSUM_WG_SIZE=%d" % 1024, # tune ?
             ]
         )
         self.correlation_kernel = self.kernels.get_kernel("correlator_multiQ_dense")
         self.wg = (128, 1) # TODO determine as nextpow2(image_width)
         self.grid = (max(self.wg[0], self.shape[1]), self.nframes)
+        self.sums_kernel = self.kernels.get_kernel("compute_sums_dense")
+        self.corr1D_kernel = self.kernels.get_kernel("correlate_1D")
+
 
     def _allocate_arrays(self):
         self.d_frames = parray.zeros(
@@ -49,30 +58,7 @@ class DenseCorrelator(OpenclCorrelator):
         self._old_d_frames = None
 
 
-    def set_data(self, vol_times, vol_data, ctr):
-        arrays = {
-            "vol_times": vol_times,
-            "vol_data": vol_data,
-            "ctr": ctr
-        }
-        for arr_name, array in arrays.items():
-            my_array_name = "d_" + arr_name
-            my_array = getattr(self, my_array_name)
-            assert my_array.shape == array.shape
-            assert my_array.dtype == array.dtype
-            if isinstance(array, np.ndarray):
-                my_array.set(array)
-            elif isinstance(parray.Array):
-                setattr(self, "_old_" + my_array_name, my_array)
-                setattr(self, my_array_name, array)
-            else: # support buffers ?
-                raise ValueError("Unknown array type %s" % str(type(array)))
-
-
-
-
     def correlate(self, frames):
-
         self._set_data({"frames": frames})
 
         evt = self.correlation_kernel(
@@ -90,10 +76,5 @@ class DenseCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Dense correlator")
 
 
-
         return self.d_res.get()
-
-
-
-
 

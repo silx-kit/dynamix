@@ -49,6 +49,7 @@ class OpenclCorrelator(OpenclProcessing):
         self.dtype = dtype
         self.output_dtype = np.float32
         self.c_dtype = dtype_to_ctype(self.dtype)
+        self.c_sums_dtype = dtype_to_ctype(np.uint32) # TODO custom ?
         self.idx_c_dtype = "int" # TODO custom ?
 
     def _set_qmask(self, qmask=None):
