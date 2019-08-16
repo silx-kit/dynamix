@@ -12,7 +12,7 @@ from ..utils import get_opencl_srcfile
 class OpenclCorrelator(OpenclProcessing):
 
     def __init__(
-        self, shape, nframes, dtype="f", bins=0, weights=None, extra_options={},
+        self, shape, nframes, qmask=None, dtype="f", weights=None, extra_options={},
         ctx=None, devicetype="all", platformid=None, deviceid=None,
         block_size=None, memory=None, profile=False
     ):
@@ -24,14 +24,14 @@ class OpenclCorrelator(OpenclProcessing):
             deviceid=deviceid, block_size=block_size, memory=memory,
             profile=profile
         )
-        self._set_parameters(shape, nframes, dtype, bins, weights, extra_options)
+        self._set_parameters(shape, nframes, dtype, qmask, weights, extra_options)
         self._allocate_memory()
 
-    def _set_parameters(self, shape, nframes, dtype, bins, weights, extra_options):
+    def _set_parameters(self, shape, nframes, dtype, qmask, weights, extra_options):
         self.nframes = nframes
         self._set_shape(shape)
         self._set_dtype(dtype=dtype)
-        self._set_bins(bins=bins)
+        self._set_qmask(qmask=qmask)
         self._set_weights(weights=weights)
         self._configure_extra_options(extra_options)
         self.is_cpu = (self.device.type == "CPU") # move to OpenclProcessing ?
@@ -51,13 +51,17 @@ class OpenclCorrelator(OpenclProcessing):
         self.c_dtype = dtype_to_ctype(self.dtype)
         self.idx_c_dtype = "int" # TODO custom ?
 
-    def _set_bins(self, bins=0):
-        # add checks ?
-        self.bins = bins
-        if self.bins > 0:
-            self.output_shape = (self.nframes, self.bins)
-        else:
+    def _set_qmask(self, qmask=None):
+        self.qmask = qmask
+        if qmask is None:
+            self.bins = None
+            self.n_bins = 0
             self.output_shape = (self.nframes, )
+        else:
+            self.bins = np.unique(qmask)[1:]
+            self.n_bins = self.bins.size
+            self.output_shape = (self.nframes, self.bins)
+            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.uint16) 
 
     def _set_weights(self, weights=None):
         if weights is None:
@@ -78,6 +82,38 @@ class OpenclCorrelator(OpenclProcessing):
             self.output_dtype
         )
         self.d_norm_mask = parray.to_device(self.queue, self.weights)
+        if self.qmask is not None:
+            self.d_qmask = parray.to_device(self.queue, self.qmask)
+
+
+    def _set_data(self, arrays):
+        """
+        General-purpose function for setting the internal arrays (copy for 
+        numpy arrays, swap for pyopencl arrays).
+        The parameter "arrays" must be a mapping array_name -> array.
+        """
+        for arr_name, array in arrays.items():
+            my_array_name = "d_" + arr_name
+            my_array = getattr(self, my_array_name)
+            assert my_array.shape == array.shape
+            assert my_array.dtype == array.dtype
+            if isinstance(array, np.ndarray):
+                my_array.set(array)
+            elif isinstance(parray.Array):
+                setattr(self, "_old_" + my_array_name, my_array)
+                setattr(self, my_array_name, array)
+            else: # support buffers ?
+                raise ValueError("Unknown array type %s" % str(type(array)))
+
+
+    def _reset_arrays(self, arrays_names):
+        for array_name in arrays_names:
+            old_array_name = "_old_" + array_name
+            old_array = getattr(self, old_array_name)
+            if old_array is not None:
+                setattr(self, array_name, old_array)
+                setattr(self, old_array_name, None)
+
 
 
     # Overwrite OpenclProcessing.compile_kernel, as it does not support
@@ -99,3 +135,6 @@ class OpenclCorrelator(OpenclProcessing):
             raise MemoryError(error)
         else:
             self.kernels = KernelContainer(self.program)
+
+
+

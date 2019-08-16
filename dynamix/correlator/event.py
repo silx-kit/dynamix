@@ -1,5 +1,5 @@
 import numpy as np
-from silx.opencl.common import pyopencl as cl
+# from silx.opencl.common import pyopencl as cl
 import pyopencl.array as parray
 from ..utils import get_opencl_srcfile
 from .common import OpenclCorrelator
@@ -27,7 +27,6 @@ class EventCorrelator(OpenclCorrelator):
         self.max_events_count = max_events_count
         self._setup_kernels()
         self._allocate_event_arrays()
-
 
 
     def _setup_kernels(self):
@@ -62,37 +61,12 @@ class EventCorrelator(OpenclCorrelator):
         self.d_res = parray.zeros(self.queue, self.nframes, np.float32)
 
 
-    def set_data(self, vol_times, vol_data, ctr):
-        arrays = {
+    def correlate(self, vol_times, vol_data, ctr):
+        self._set_data({
             "vol_times": vol_times,
             "vol_data": vol_data,
             "ctr": ctr
-        }
-        for arr_name, array in arrays.items():
-            my_array_name = "d_" + arr_name
-            my_array = getattr(self, my_array_name)
-            assert my_array.shape == array.shape
-            assert my_array.dtype == array.dtype
-            if isinstance(array, np.ndarray):
-                my_array.set(array)
-            elif isinstance(parray.Array):
-                setattr(self, "_old_" + my_array_name, my_array)
-                setattr(self, my_array_name, array)
-            else: # support buffers ?
-                raise ValueError("Unknown array type %s" % str(type(array)))
-
-    def _reset_arrays(self):
-        for array_name in ["d_vol_times", "d_vol_data", "d_ctr"]:
-            old_array_name = "_old_" + array_name
-            old_array = getattr(self, old_array_name)
-            if old_array is not None:
-                setattr(self, array_name, old_array)
-                setattr(self, old_array_name, None)
-
-
-    def correlate(self, vol_times, vol_data, ctr):
-
-        self.set_data(vol_times, vol_data, ctr)
+        })
 
         evt = self.correlation_kernel(
             self.queue,
@@ -108,23 +82,6 @@ class EventCorrelator(OpenclCorrelator):
         evt.wait()
         self.profile_add(evt, "Event correlator")
 
-        """
-
-        ###
-        self.d_sums *= 1.0 / np.sqrt((np.prod(self.shape))) # !
-        sums = self.d_sums.get()
-        N = self.nframes
-        normalization = np.zeros(N)
-        for i in range(N):
-            for j in range(i, N):
-                normalization[i] += sums[j]*sums[j-i]
-        ###
-        self._reset_arrays()
-
-        res = self.d_res_int.get()*1.0 / normalization # TODO
-        return res
-        """
-
         evt = self.normalization_kernel(
             self.queue,
             (self.nframes, 1),
@@ -134,8 +91,12 @@ class EventCorrelator(OpenclCorrelator):
             self.d_sums.data,
             np.int32(self.nframes)
         )
-        return self.d_res.get()
+        evt.wait()
+        self.profile_add(evt, "Normalization")
 
+        self._reset_arrays(["d_vol_times", "d_vol_data", "d_ctr"])
+        
+        return self.d_res.get()
 
 
     def build_events_volume(self, frames):
@@ -168,6 +129,4 @@ class EventCorrelator(OpenclCorrelator):
             ctr[R, C] += 1
 
         return volume_times, volume_data, ctr
-
-
 
