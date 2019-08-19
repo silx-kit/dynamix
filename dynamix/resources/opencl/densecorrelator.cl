@@ -148,8 +148,7 @@ kernel void compute_sums_dense(
 
 
 
-// Launched with a 1D grid of size Nt
-// N_FRAMES * sizeof(DTYPE_SUMS) must be < 40 KB
+// Launched with a grid of size (Nt, n_bins)
 kernel void correlate_1D(
     const global DTYPE_SUMS* sums,
     global float* output
@@ -157,21 +156,9 @@ kernel void correlate_1D(
     uint tau = get_global_id(0);
     if (tau >= N_FRAMES) return;
 
-    #if CORR_USE_SHARED > 0
-    local DTYPE_SUMS s_sums[N_FRAMES];
-    for (int k = 0; k + tid < N_FRAMES; k += get_local_size(0)) {
-        s_sums[tid + k] = 0;
-    }
-    barrier(CLK_LOCAL_MEM_FENCE);
-    #endif
-
     float s = 0.0f;
     for (int t = tau; t < N_FRAMES; t++) {
-        #if CORR_USE_SHARED > 0
-        s += s_sums[t] * s_sums[t - tau];
-        #else
         s += sums[t] * sums[t - tau];
-        #endif
     }
     output[tau] = s;
 }
