@@ -59,14 +59,14 @@ class DenseCorrelator(OpenclCorrelator):
             self.dtype
         )
         self._old_d_frames = None
-        self.d_sums = parray.zeros( # TODO multi-bin
+        self.d_sums = parray.zeros(
             self.queue,
-            (self.nframes, ),
+            self.output_shape,
             self.sums_dtype
         )
-        self.d_sums_f = parray.zeros( # TODO multi-bin
+        self.d_sums_f = parray.zeros( 
             self.queue,
-            (self.nframes, ),
+            self.output_shape,
             self.output_dtype,
         )
 
@@ -96,6 +96,7 @@ class DenseCorrelator(OpenclCorrelator):
             (self.wg[0], self.nframes), 
             (self.wg[0], 1), 
             self.d_frames.data,
+            self.d_qmask.data,
             self.d_sums.data,
             np.int32(self.shape[0]), 
             np.int32(self.nframes)

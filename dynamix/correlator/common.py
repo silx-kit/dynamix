@@ -62,8 +62,8 @@ class OpenclCorrelator(OpenclProcessing):
         else:
             self.bins = np.unique(qmask)[1:]
             self.n_bins = self.bins.size
-            self.output_shape = (self.nframes, self.bins)
-            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.uint16) 
+            self.output_shape = (self.n_bins, self.nframes)
+            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.int32) # 
 
     def _set_weights(self, weights=None):
         if weights is None:
