@@ -60,10 +60,11 @@ kernel void compute_sums_dense(
 ) {
     uint tid = get_local_id(0);
     uint frame_id = get_global_id(1);
-    if (frame_id > Nt) return;
+    if (frame_id >= Nt) return;
 
     // frame for current group of threads
-    const global DTYPE* frame = frames + frame_id*image_height*IMAGE_WIDTH;
+    size_t numels = IMAGE_WIDTH * image_height;
+    const global DTYPE* frame = frames + frame_id*numels;
 
     // Allocate (+memset) a shared buffer twice bigger than workgroup size
     local DTYPE_SUMS s_buf[2*SUM_WG_SIZE];
@@ -72,7 +73,6 @@ kernel void compute_sums_dense(
     barrier(CLK_LOCAL_MEM_FENCE);
 
     // Step 1: reduce global data to local data
-    size_t numels = IMAGE_WIDTH * image_height;
     for (int offset = 0; tid + offset < numels; offset += SUM_WG_SIZE) {
         s_buf[tid] += frame[tid + offset];
     }
@@ -103,6 +103,7 @@ kernel void compute_sums_dense(
     if (tid < 64) s_buf[tid] += s_buf[tid + 64];
     barrier(CLK_LOCAL_MEM_FENCE);
     #endif
+
 
     // No synchronization needed on Nvidia hardware beyond this point
     if (tid < 32) {
@@ -148,7 +149,7 @@ kernel void correlate_1D(
     #if CORR_USE_SHARED > 0
     local DTYPE_SUMS s_sums[N_FRAMES];
     for (int k = 0; k + tid < N_FRAMES; k += get_local_size(0)) {
-        s_sums[tid + k] = 0.0f;
+        s_sums[tid + k] = 0;
     }
     barrier(CLK_LOCAL_MEM_FENCE);
     #endif

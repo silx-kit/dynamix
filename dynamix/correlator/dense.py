@@ -1,6 +1,6 @@
 import numpy as np
 import pyopencl.array as parray
-from ..utils import get_opencl_srcfile
+from ..utils import nextpow2, get_opencl_srcfile
 from .common import OpenclCorrelator
 
 class DenseCorrelator(OpenclCorrelator):
@@ -39,11 +39,14 @@ class DenseCorrelator(OpenclCorrelator):
                 "-DDTYPE_SUMS=%s" % self.c_sums_dtype,
                 "-DN_FRAMES=%d" % self.nframes,
                 "-DUSE_SHARED=%d" % 0, # <
-                "-DSUM_WG_SIZE=%d" % 1024, # tune ?
+                "-DSUM_WG_SIZE=%d" % min(1024, nextpow2(self.shape[1])),
             ]
         )
         self.correlation_kernel = self.kernels.get_kernel("correlator_multiQ_dense")
-        self.wg = (128, 1) # TODO determine as nextpow2(image_width)
+        self.wg = (
+            min(1024, nextpow2(self.shape[1])),
+            1
+            )
         self.grid = (max(self.wg[0], self.shape[1]), self.nframes)
         self.sums_kernel = self.kernels.get_kernel("compute_sums_dense")
         self.corr1D_kernel = self.kernels.get_kernel("correlate_1D")
@@ -56,6 +59,16 @@ class DenseCorrelator(OpenclCorrelator):
             self.dtype
         )
         self._old_d_frames = None
+        self.d_sums = parray.zeros( # TODO multi-bin
+            self.queue,
+            (self.nframes, ),
+            self.sums_dtype
+        )
+        self.d_sums_f = parray.zeros( # TODO multi-bin
+            self.queue,
+            (self.nframes, ),
+            self.output_dtype,
+        )
 
 
     def correlate(self, frames):
@@ -74,7 +87,31 @@ class DenseCorrelator(OpenclCorrelator):
         )
         evt.wait()
         self.profile_add(evt, "Dense correlator")
-
-
         return self.d_res.get()
+
+    
+    def _sum_frames(self):
+        evt = self.sums_kernel(
+            self.queue, 
+            (self.wg[0], self.nframes), 
+            (self.wg[0], 1), 
+            self.d_frames.data,
+            self.d_sums.data,
+            np.int32(self.shape[0]), 
+            np.int32(self.nframes)
+        )
+        evt.wait()
+        self.profile_add(evt, "Sum kernel")
+        
+
+    def _correlate_1d(self):
+        evt = self.corr1D_kernel(
+            self.queue,
+            (self.nframes, 1),
+            None,
+            self.d_sums.data,
+            self.d_sums_f.data,
+        )
+        evt.wait()
+        self.profile_add(evt, "Corr 1D kernel")
 

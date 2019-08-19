@@ -9,3 +9,9 @@ def get_opencl_srcfile(filename):
     src_relpath =  os.path.join("resources", "opencl")
     opencl_src_folder = get_folder_path(foldername = src_relpath)
     return os.path.join(opencl_src_folder, filename)
+
+def nextpow2(n):
+    p = 1
+    while p < n:
+        p *= 2
+    return p

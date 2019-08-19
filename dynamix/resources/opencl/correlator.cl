@@ -24,7 +24,7 @@ kernel void compute_sums(
 ) {
     uint tid = get_local_id(0);
     uint frame_id = get_global_id(1);
-    if (frame_id > Nt) return;
+    if (frame_id >= Nt) return;
 
     // Allocate (+memset) a shared buffer twice bigger than workgroup size
     local OUT_DTYPE s_buf[2*SUM_WG_SIZE];
