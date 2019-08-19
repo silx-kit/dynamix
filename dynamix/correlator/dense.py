@@ -9,7 +9,7 @@ class DenseCorrelator(OpenclCorrelator):
 
 
     def __init__(
-        self, shape, nframes, 
+        self, shape, nframes,
         qmask=None, dtype="f", weights=None, extra_options={},
         ctx=None, devicetype="all", platformid=None, deviceid=None,
         block_size=None, memory=None, profile=False
@@ -18,7 +18,7 @@ class DenseCorrelator(OpenclCorrelator):
         TODO docstring
         """
         super().__init__(
-            shape, nframes, qmask=qmask, dtype=dtype, weights=weights, 
+            shape, nframes, qmask=qmask, dtype=dtype, weights=weights,
             extra_options=extra_options,
             ctx=ctx, devicetype=devicetype, platformid=platformid,
             deviceid=deviceid, block_size=block_size, memory=memory,
@@ -40,7 +40,6 @@ class DenseCorrelator(OpenclCorrelator):
                 "-DN_FRAMES=%d" % self.nframes,
                 "-DUSE_SHARED=%d" % 0, # <
                 "-DSUM_WG_SIZE=%d" % min(1024, nextpow2(self.shape[1])),
-                "-DSCALE_FACTOR=%f" % self.scaling_factor, # <
             ]
         )
         self.correlation_kernel = self.kernels.get_kernel("correlator_multiQ_dense")
@@ -65,7 +64,7 @@ class DenseCorrelator(OpenclCorrelator):
             self.output_shape,
             self.sums_dtype
         )
-        self.d_sums_f = parray.zeros( 
+        self.d_sums_f = parray.zeros(
             self.queue,
             self.output_shape,
             self.output_dtype,
@@ -90,21 +89,21 @@ class DenseCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Dense correlator")
         return self.d_res.get()
 
-    
+
     def _sum_frames(self):
         evt = self.sums_kernel(
-            self.queue, 
-            (self.wg[0], self.nframes), 
-            (self.wg[0], 1), 
+            self.queue,
+            (self.wg[0], self.nframes),
+            (self.wg[0], 1),
             self.d_frames.data,
             self.d_qmask.data,
             self.d_sums.data,
-            np.int32(self.shape[0]), 
+            np.int32(self.shape[0]),
             np.int32(self.nframes)
         )
         evt.wait()
         self.profile_add(evt, "Sum kernel")
-        
+
 
     def _correlate_1d(self):
         evt = self.corr1D_kernel(

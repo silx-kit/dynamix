@@ -70,15 +70,20 @@ class OpenclCorrelator(OpenclProcessing):
             deviceid=deviceid, block_size=block_size, memory=memory,
             profile=profile
         )
-        self._set_parameters(shape, nframes, dtype, qmask, weights, extra_options)
+        self._set_parameters(
+            shape, nframes, dtype, qmask, weights, scale_factor, extra_options
+        )
         self._allocate_memory()
 
-    def _set_parameters(self, shape, nframes, dtype, qmask, weights, extra_options):
+    def _set_parameters(
+        self, shape, nframes, dtype, qmask, weights, scale_factor, extra_options
+    ):
         self.nframes = nframes
         self._set_shape(shape)
         self._set_dtype(dtype=dtype)
         self._set_qmask(qmask=qmask)
         self._set_weights(weights=weights)
+        self._set_scale_factor(scale_factor=scale_factor)
         self._configure_extra_options(extra_options)
         self.is_cpu = (self.device.type == "CPU") # move to OpenclProcessing ?
 
@@ -118,6 +123,23 @@ class OpenclCorrelator(OpenclProcessing):
         assert weights.shape == self.shape
         self.weights = np.ascontiguousarray(weights, dtype=self.output_dtype)
         raise ValueError("Advanced weighting is not implemented yet")
+
+    def _set_scale_factor(self, scale_factor=None):
+        if self.n_bins == 0:
+            self.scale_factor = scale_factor or np.prod(self.shape)
+            self.scale_factors = None
+        else:
+            self.scale_factor = None
+            if scale_factor is not None:
+                assert np.iterable(scale_factor)
+                assert len(scale_factor) == self.n_bins
+                self.scale_factors = scale_factor
+            else:
+                self.scale_factors = []
+                for bin_val in self.bins:
+                    self.scale_factors.append(np.sum(self.qmask == bin_val))
+
+
 
     def _configure_extra_options(self, extra_options):
         self.extra_options = {}
@@ -184,6 +206,3 @@ class OpenclCorrelator(OpenclProcessing):
             raise MemoryError(error)
         else:
             self.kernels = KernelContainer(self.program)
-
-
-

@@ -81,7 +81,7 @@ kernel void compute_sums_dense(
 
     // Step 1: reduce global data to local data
     for (int offset = 0; tid + offset < numels; offset += SUM_WG_SIZE) {
-        int q = q_mask[tid + offset] - 1;  
+        int q = q_mask[tid + offset] - 1;
         if (q == -1) continue;
         s_buf[q*(2*SUM_WG_SIZE) + tid] += frame[tid + offset];
     }
@@ -150,8 +150,7 @@ kernel void compute_sums_dense(
 // Launched with a grid of size (Nt, n_bins)
 kernel void correlate_1D(
     const global DTYPE_SUMS* sums,
-    global float* output,
-    float scale_factor,
+    global float* output
 ) {
     uint tau = get_global_id(0);
     uint q = get_global_id(1);
@@ -165,17 +164,9 @@ kernel void correlate_1D(
     float s = 0.0f;
     #endif
     for (int t = tau; t < N_FRAMES; t++) {
-        #if COR_USE_INT_COMPUTATION == 0
-        s += (sums[t] * sums[t - tau])*SCALE_FACTOR;
-        #else
         s += sums[t] * sums[t - tau];
-        #endif
     }
-    #if COR_USE_INT_COMPUTATION == 1
-    output[tau] = s * SCALE_FACTOR;
-    #else
     output[tau] = s;
-    #endif
 }
 
 
