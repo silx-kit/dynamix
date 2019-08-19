@@ -147,20 +147,35 @@ kernel void compute_sums_dense(
 
 
 
-
 // Launched with a grid of size (Nt, n_bins)
 kernel void correlate_1D(
     const global DTYPE_SUMS* sums,
-    global float* output
+    global float* output,
+    float scale_factor,
 ) {
     uint tau = get_global_id(0);
+    uint q = get_global_id(1);
     if (tau >= N_FRAMES) return;
 
+    // Using integers for correlation computation avoids float32 loss of precision,
+    // But is error-prone if many pixels have a high value
+    #if COR_USE_INT_COMPUTATION == 1
+    uint s = 0;
+    #else
     float s = 0.0f;
+    #endif
     for (int t = tau; t < N_FRAMES; t++) {
+        #if COR_USE_INT_COMPUTATION == 0
+        s += (sums[t] * sums[t - tau])*SCALE_FACTOR;
+        #else
         s += sums[t] * sums[t - tau];
+        #endif
     }
+    #if COR_USE_INT_COMPUTATION == 1
+    output[tau] = s * SCALE_FACTOR;
+    #else
     output[tau] = s;
+    #endif
 }
 
 

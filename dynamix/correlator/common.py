@@ -12,12 +12,58 @@ from ..utils import get_opencl_srcfile
 class OpenclCorrelator(OpenclProcessing):
 
     def __init__(
-        self, shape, nframes, qmask=None, dtype="f", weights=None, extra_options={},
+        self, shape, nframes, qmask=None, dtype=np.int8, weights=None,
+        scale_factor=None, extra_options={},
         ctx=None, devicetype="all", platformid=None, deviceid=None,
         block_size=None, memory=None, profile=False
     ):
         """
-        TODO docstring
+        Opencl Correlator
+        -----------------
+
+        This is the base class for all OpenCL correlators. Currently there are
+        three kinds of correlators:
+          - Dense correlator
+          - CSR correlator
+          - Event correlator
+        Although using a different method for computing the correlation function,
+        all of them should return the same result.
+
+        Parameters
+        -----------
+
+        shape: tuple
+            Shape of each XPCS frame.
+        nframes: int
+            Number of frames
+        qmask: numpy.ndarray, optional
+            Mask indicating the bins location on the frames.
+            It must have the same shape as the frames.
+            Value zero indicate that the pixel is not taken into account.
+            If no qmask is provided, all the pixels are used for the summation.
+        dtype: str or numpy.dtype, optional
+            Data type of the frames
+        weights: numpy.ndarray, optional
+            Array of weights used to multiply each frame. Can be used for
+            flat-field correction, for example.
+            It must have the same shape as the frames.
+        scale_factor: float or numpy.ndarray, optional
+            Value used for spatial averaging.
+            If all the pixels in the frames are used for the correlation
+            (i.e qmask is None), the spatial averaging is sum(frame)/frame.size.
+            If "qmask" is not None, sum(frame) is divided by the number of pixels
+            falling into the current bin (i.e len(qmask == bin)).
+            You can speficy a different value: either a float (in this case
+            the same normalization is used for all bins), or an array which
+            must have the same length as the number of bins.
+        extra_options: dict, optional
+            Advanced extra options. None available yet.
+
+
+        Other parameters
+        -----------------
+
+        Please see silx.opencl.processing.OpenclProcessing for other arguments.
         """
         OpenclProcessing.__init__(
             self, ctx=ctx, devicetype=devicetype, platformid=platformid,
@@ -63,7 +109,7 @@ class OpenclCorrelator(OpenclProcessing):
             self.bins = np.unique(qmask)[1:]
             self.n_bins = self.bins.size
             self.output_shape = (self.n_bins, self.nframes)
-            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.int32) # 
+            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.int32) #
 
     def _set_weights(self, weights=None):
         if weights is None:
@@ -71,6 +117,7 @@ class OpenclCorrelator(OpenclProcessing):
             return
         assert weights.shape == self.shape
         self.weights = np.ascontiguousarray(weights, dtype=self.output_dtype)
+        raise ValueError("Advanced weighting is not implemented yet")
 
     def _configure_extra_options(self, extra_options):
         self.extra_options = {}
@@ -90,7 +137,7 @@ class OpenclCorrelator(OpenclProcessing):
 
     def _set_data(self, arrays):
         """
-        General-purpose function for setting the internal arrays (copy for 
+        General-purpose function for setting the internal arrays (copy for
         numpy arrays, swap for pyopencl arrays).
         The parameter "arrays" must be a mapping array_name -> array.
         """

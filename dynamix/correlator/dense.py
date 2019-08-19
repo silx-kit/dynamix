@@ -40,6 +40,7 @@ class DenseCorrelator(OpenclCorrelator):
                 "-DN_FRAMES=%d" % self.nframes,
                 "-DUSE_SHARED=%d" % 0, # <
                 "-DSUM_WG_SIZE=%d" % min(1024, nextpow2(self.shape[1])),
+                "-DSCALE_FACTOR=%f" % self.scaling_factor, # <
             ]
         )
         self.correlation_kernel = self.kernels.get_kernel("correlator_multiQ_dense")
