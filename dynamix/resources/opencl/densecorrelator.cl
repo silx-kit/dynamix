@@ -7,6 +7,7 @@ kernel void correlator_multiQ_dense(
     const global char* frames,
     const global int* q_mask,
     const global float* norm_mask,
+    const global float* normalization,
     global float* output,
     int image_height,
     int Nt
@@ -46,7 +47,7 @@ kernel void correlator_multiQ_dense(
     barrier(CLK_LOCAL_MEM_FENCE);
 
     if (tid < NUM_BINS)  // tid <-> q
-        output[tid*Nt + tau] = sum_p[tid];
+        output[tid*Nt + tau] = sum_p[tid] / normalization[tid*Nt + tau];
 }
 
 
@@ -155,6 +156,7 @@ kernel void correlate_1D(
     uint tau = get_global_id(0);
     uint q = get_global_id(1);
     if (tau >= N_FRAMES) return;
+    if (q >= NUM_BINS) return;
 
     // Using integers for correlation computation avoids float32 loss of precision,
     // But is error-prone if many pixels have a high value
@@ -164,9 +166,9 @@ kernel void correlate_1D(
     float s = 0.0f;
     #endif
     for (int t = tau; t < N_FRAMES; t++) {
-        s += sums[t] * sums[t - tau];
+        s += sums[q * N_FRAMES + t] * sums[q * N_FRAMES + t - tau];
     }
-    output[tau] = s;
+    output[q*N_FRAMES + tau] = s;
 }
 
 

@@ -71,9 +71,24 @@ class DenseCorrelator(OpenclCorrelator):
         )
 
 
+    def _normalize_sums(self):
+        if self.n_bins == 0:
+            self.d_sums_f[:] *= self.scale_factor
+        else:
+            for i, factor in enumerate(self.scale_factors):
+                self.d_sums_f[i] /= np.array([factor], dtype=self.output_dtype)[0]
+        # self.d_sums_f.finish()
+
+
     def correlate(self, frames):
         self._set_data({"frames": frames})
 
+        # Denominator
+        self._sum_frames()
+        self._correlate_1d()
+        self._normalize_sums()
+
+        # Numerator
         evt = self.correlation_kernel(
             self.queue,
             self.grid,
@@ -81,13 +96,17 @@ class DenseCorrelator(OpenclCorrelator):
             self.d_frames.data,
             self.d_qmask.data,
             self.d_norm_mask.data,
+            self.d_sums_f.data,
             self.d_output.data,
             np.int32(self.shape[0]),
             np.int32(self.nframes),
         )
         evt.wait()
         self.profile_add(evt, "Dense correlator")
-        return self.d_res.get()
+
+        self._reset_arrays(["frames"])
+
+        return self.d_output.get() # get ?
 
 
     def _sum_frames(self):
@@ -108,7 +127,7 @@ class DenseCorrelator(OpenclCorrelator):
     def _correlate_1d(self):
         evt = self.corr1D_kernel(
             self.queue,
-            (self.nframes, 1),
+            (self.nframes, self.n_bins),
             None,
             self.d_sums.data,
             self.d_sums_f.data,

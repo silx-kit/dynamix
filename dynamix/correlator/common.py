@@ -179,7 +179,7 @@ class OpenclCorrelator(OpenclProcessing):
 
     def _reset_arrays(self, arrays_names):
         for array_name in arrays_names:
-            old_array_name = "_old_" + array_name
+            old_array_name = "_old_d_" + array_name
             old_array = getattr(self, old_array_name)
             if old_array is not None:
                 setattr(self, array_name, old_array)
