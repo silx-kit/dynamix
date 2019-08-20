@@ -135,3 +135,31 @@ class DenseCorrelator(OpenclCorrelator):
         evt.wait()
         self.profile_add(evt, "Corr 1D kernel")
 
+
+def py_dense_correlator(xpcs_data, mask):
+    """
+    Reference/"naive" implementation of the dense correlator.
+
+    Parameters
+    -----------
+    xpcs_data: numpy.ndarray
+        Stack of XPCS frames with shape (n_frames, n_rows, n_columns)
+    mask: numpy.ndarray
+        Mask of bins in the format (n_rows, n_columns).
+        Zero pixels indicate unused pixels.
+    """
+    ind = np.where(mask > 0) # unused pixels are 0
+    xpcs_data = np.array(xpcs_data[:, ind[0], ind[1]], np.float32) # (n_tau, n_pix)
+    meanmatr = np.mean(xpcs_data, axis=1) # xpcs_data.sum(axis=-1).sum(axis=-1)/n_pix
+    ltimes, lenmatr = np.shape(xpcs_data) # n_tau, n_pix
+    meanmatr.shape = 1, ltimes
+
+    num = np.dot(xpcs_data, xpcs_data.T)
+    denom = np.dot(meanmatr.T, meanmatr)
+
+    res = np.zeros(ltimes-1) # was ones()
+    for i in range(1, ltimes): # was ltimes-1, so res[-1] was always 1 !
+        dia_n = np.diag(num, k=i)
+        dia_d = np.diag(denom, k=i)
+        res[i-1] = np.sum(dia_n)/np.sum(dia_d) / lenmatr
+    return res
