@@ -163,3 +163,95 @@ def py_dense_correlator(xpcs_data, mask):
         dia_d = np.diag(denom, k=i)
         res[i-1] = np.sum(dia_n)/np.sum(dia_d) / lenmatr
     return res
+
+
+
+
+from silx.math.fft.cufft import CUFFT
+import pycuda.gpuarray as garray
+
+class DenseFFTCorrelator(object):
+    """
+    Not an OpenCL correlator, as we are not using OpenCL.
+    CLFFT does not support 1D FFT of too big arrays for some reason.
+    """
+
+    def __init__(
+        self, shape, nframes, qmask=None, dtype="f", weights=None, scale_factor=None,
+        precompute_fft_plans=False,
+        extra_options={}
+    ):
+        self._set_parameters(shape, nframes, dtype, qmask, weights, scale_factor, extra_options)
+        self._init_fft_plans(precompute_fft_plans)
+
+    def _set_parameters(
+        self, shape, nframes, dtype, qmask, weights, scale_factor, extra_options
+    ):
+        self.nframes = nframes
+        # Ugly !
+        OpenclCorrelator._set_shape(self, shape)
+        OpenclCorrelator._set_dtype(self, dtype=dtype)
+        OpenclCorrelator._set_qmask(self, qmask=qmask)
+        OpenclCorrelator._set_weights(self, weights=weights)
+        OpenclCorrelator._set_scale_factor(self, scale_factor=scale_factor)
+        OpenclCorrelator._configure_extra_options(self, extra_options)
+        # ---
+
+    def _init_fft_plans(self, precompute_fft_plans):
+        """
+        Create one couple of (FFT, IFFT) plans for each bin value
+        """
+        self.precompute_fft_plans = precompute_fft_plans
+        self.fft_sizes = {}
+        self.ffts = {}
+        bins = self.bins if self.bins is not None else [0]
+        for bin_val in bins:
+            if bin_val == 0:
+                n_mask_pixels = np.prod(self.shape)
+            else:
+                n_mask_pixels = (self.qmask == bin_val).sum()
+            fft_size = nextpow2(2 * self.nframes * int(n_mask_pixels))
+            self.fft_sizes[bin_val] = fft_size
+            self.ffts[bin_val] = CUFFT(
+                template=np.zeros(fft_size, dtype=np.float32)
+            ) if precompute_fft_plans else None
+
+
+
+    def _compute_sums(self, frames):
+        # frames: (n_frames, n_pix), float32
+        # Do it on GPU ? Cumbersome, and not sure if the perf gain is worth it
+        return frames.mean(axis=1)
+
+
+    def _correlate_1d(self, frames, bin_val=0):
+        # frames: (n_frames, n_pix), float32
+        N = self.fft_sizes[bin_val]
+        fft = self.ffts[bin_val]
+        if fft is None: # plan is not precomputed - time to compute it
+            fft = CUFFT(template=np.zeros(N, dtype=np.float32))
+
+        fft.data_in[:frames.size] = frames.ravel()[:]
+        d_out1 = fft.data_out
+        d_out2 = garray.zeros_like(fft.data_out)
+        fft.fft(fft.data_in, output=d_out1)
+        fft.data_in[:frames.size] = np.ascontiguousarray(frames.ravel()[::-1])
+        fft.fft(fft.data_in, output=d_out2)
+
+        d_out1 *= d_out2
+        fft.ifft(d_out1, output=fft.data_in)
+        res = fft.data_in.get()
+
+        numerator = res[:frames.size].reshape((self.nframes, -1))[:, -1][::-1]
+
+
+        sums = self._compute_sums(frames)
+        denominator = np.correlate(sums, sums, "full")[sums.size-1:] # with fft and/or gpu ?
+
+        return numerator/denominator
+
+
+
+
+    def correlate(self, frames):
+        pass
