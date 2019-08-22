@@ -2,6 +2,11 @@ import numpy as np
 import pyopencl.array as parray
 from ..utils import nextpow2, get_opencl_srcfile
 from .common import OpenclCorrelator
+try:
+    from silx.math.fft.cufft import CUFFT
+    import pycuda.gpuarray as garray
+except ImportError:
+    CUFFT = None
 
 class DenseCorrelator(OpenclCorrelator):
 
@@ -75,9 +80,9 @@ class DenseCorrelator(OpenclCorrelator):
         if self.n_bins == 0:
             self.d_sums_f[:] *= self.scale_factors[0]
         else:
-            for i, factor in enumerate(self.scale_factors):
+            for i, factor in enumerate(self.scale_factors.values()):
                 self.d_sums_f[i] /= np.array([factor], dtype=self.output_dtype)[0]
-        # self.d_sums_f.finish()
+        self.d_sums_f.finish()
 
 
     def correlate(self, frames):
@@ -166,10 +171,6 @@ def py_dense_correlator(xpcs_data, mask):
 
 
 
-
-from silx.math.fft.cufft import CUFFT
-import pycuda.gpuarray as garray
-
 class DenseFFTCorrelator(object):
     """
     Not an OpenCL correlator, as we are not using OpenCL.
@@ -177,22 +178,23 @@ class DenseFFTCorrelator(object):
     """
 
     def __init__(
-        self, shape, nframes, qmask=None, dtype="f", weights=None, scale_factor=None,
+        self, shape, nframes, qmask=None, weights=None, scale_factor=None,
         precompute_fft_plans=False,
         extra_options={}
     ):
-        self._set_parameters(shape, nframes, dtype, qmask, weights, scale_factor, extra_options)
+        if CUFFT is None:
+            raise ImportError("pycuda and scikit-cuda need to be installed")
+        self._set_parameters(shape, nframes, qmask, weights, scale_factor, extra_options)
         self._init_fft_plans(precompute_fft_plans)
 
     def _set_parameters(
-        self, shape, nframes, dtype, qmask, weights, scale_factor, extra_options
+        self, shape, nframes, qmask, weights, scale_factor, extra_options
     ):
         self.nframes = nframes
         # Ugly !
         OpenclCorrelator._set_shape(self, shape)
-        OpenclCorrelator._set_dtype(self, dtype=dtype)
         OpenclCorrelator._set_qmask(self, qmask=qmask)
-        OpenclCorrelator._set_weights(self, weights=weights)
+        # OpenclCorrelator._set_weights(self, weights=weights)
         OpenclCorrelator._set_scale_factor(self, scale_factor=scale_factor)
         # ---
         self._configure_extra_options(extra_options)
@@ -296,7 +298,8 @@ class DenseFFTCorrelator(object):
             Whether to convert the result in float32.
         """
         if check:
-            assert bin_val in self.bins
+            if bin_val > 0:
+                assert bin_val in self.bins
             assert frames.ndim == 3
             assert frames.shape[0] == self.nframes
             assert frames[0].shape == self.shape
