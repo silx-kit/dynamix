@@ -105,13 +105,14 @@ class OpenclCorrelator(OpenclProcessing):
         self.idx_c_dtype = "int" # TODO custom ?
 
     def _set_qmask(self, qmask=None):
-        self.qmask = qmask
+        self.qmask = None
         if qmask is None:
             self.bins = None
             self.n_bins = 0
             self.output_shape = (self.nframes, )
         else:
-            self.bins = np.unique(qmask)[1:]
+            self.qmask = np.ascontiguousarray(qmask, dtype=np.int32)
+            self.bins = np.unique(self.qmask)[1:] # TODO check that zero is not here
             self.n_bins = self.bins.size
             self.output_shape = (self.n_bins, self.nframes)
             self.qmask = np.ascontiguousarray(self.qmask, dtype=np.int32) #
@@ -126,18 +127,20 @@ class OpenclCorrelator(OpenclProcessing):
 
     def _set_scale_factor(self, scale_factor=None):
         if self.n_bins == 0:
-            self.scale_factor = scale_factor or np.prod(self.shape)
-            self.scale_factors = None
-        else:
-            self.scale_factor = None
-            if scale_factor is not None:
-                assert np.iterable(scale_factor)
-                assert len(scale_factor) == self.n_bins
+            s = scale_factor or np.prod(self.shape)
+            self.scale_factors = {0: s}
+            return
+        if scale_factor is not None:
+            assert np.iterable(scale_factor)
+            assert len(scale_factor) == self.n_bins
+            if isinstance(scale_factor, dict):
                 self.scale_factors = scale_factor
             else:
-                self.scale_factors = []
-                for bin_val in self.bins:
-                    self.scale_factors.append(np.sum(self.qmask == bin_val))
+                self.scale_factors = {k: v for k, v in zip(self.bins, scale_factor)}
+        else:
+            self.scale_factors = {}
+            for bin_val in self.bins:
+                self.scale_factors[bin_val] = np.sum(self.qmask == bin_val)
 
 
 
@@ -184,7 +187,6 @@ class OpenclCorrelator(OpenclProcessing):
             if old_array is not None:
                 setattr(self, array_name, old_array)
                 setattr(self, old_array_name, None)
-
 
 
     # Overwrite OpenclProcessing.compile_kernel, as it does not support
