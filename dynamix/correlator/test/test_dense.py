@@ -36,7 +36,7 @@ import logging
 import unittest
 import numpy as np
 from dynamix.test.utils import XPCSDataset
-from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, CUFFT, DenseFFTCorrelator
+from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, CUFFT, DenseCuFFTCorrelator, pyfftw, DenseFFTwCorrelator
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -102,10 +102,10 @@ class TestDense(unittest.TestCase):
         logger.info("OpenCL dense correlator took %.1f ms" % ((time() - t0)*1e3))
         self.compare(res, "OpenCL dense correlator")
 
-    def test_fft_dense_correlator(self):
+    def test_cufft_dense_correlator(self):
         if not(CUFFT):
             self.skipTest("Need pycuda and scikit-cuda")
-        self.fftcorrelator = DenseFFTCorrelator(
+        self.fftcorrelator = DenseCuFFTCorrelator(
             self.shape,
             self.nframes,
             qmask=self.dataset.qmask,
@@ -115,6 +115,20 @@ class TestDense(unittest.TestCase):
         res = self.fftcorrelator.correlate(self.dataset.data)
         logger.info("Cuda FFT dense correlator took %.1f ms" % ((time() - t0)*1e3))
         self.compare(res, "Cuda FFT dense correlator")
+
+    def test_fftw_dense_correlator(self):
+        if not(pyfftw):
+            self.skipTest("Need pyfftw")
+        self.fftcorrelator = DenseFFTwCorrelator(
+            self.shape,
+            self.nframes,
+            qmask=self.dataset.qmask,
+            extra_options={"save_fft_plans": False}
+        )
+        t0 = time()
+        res = self.fftcorrelator.correlate(self.dataset.data)
+        logger.info("FFTw dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        self.compare(res, "FFTw dense correlator")
 
 
 def suite():
