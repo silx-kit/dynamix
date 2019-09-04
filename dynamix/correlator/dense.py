@@ -1,17 +1,17 @@
 import numpy as np
 import pyopencl.array as parray
 from ..utils import nextpow2, get_opencl_srcfile
-from .common import OpenclCorrelator
+from .common import OpenclCorrelator, BaseCorrelator
 try:
     from silx.math.fft.cufft import CUFFT
     import pycuda.gpuarray as garray
 except ImportError:
     CUFFT = None
 
+
 class DenseCorrelator(OpenclCorrelator):
 
     kernel_files = ["densecorrelator.cl"]
-
 
     def __init__(
         self, shape, nframes,
@@ -22,7 +22,7 @@ class DenseCorrelator(OpenclCorrelator):
         """
         TODO docstring
         """
-        super().__init__(
+        super(DenseCorrelator, self).__init__(
             shape, nframes, qmask=qmask, dtype=dtype, weights=weights,
             extra_options=extra_options,
             ctx=ctx, devicetype=devicetype, platformid=platformid,
@@ -171,41 +171,27 @@ def py_dense_correlator(xpcs_data, mask):
 
 
 
-class DenseFFTCorrelator(object):
+class DenseFFTCorrelator(BaseCorrelator):
     """
     Not an OpenCL correlator, as we are not using OpenCL.
     CLFFT does not support 1D FFT of too big arrays for some reason.
     """
 
-    def __init__(
-        self, shape, nframes, qmask=None, weights=None, scale_factor=None,
-        precompute_fft_plans=False,
-        extra_options={}
-    ):
+    def __init__(self, shape, nframes, 
+                 qmask=None, 
+                 weights=None, 
+                 scale_factor=None, 
+                 precompute_fft_plans=False,
+                 extra_options={}):
+        BaseCorrelator.__init__(self)
         if CUFFT is None:
             raise ImportError("pycuda and scikit-cuda need to be installed")
-        self._set_parameters(shape, nframes, qmask, weights, scale_factor, extra_options)
+        BaseCorrelator._set_parameters(self, shape, nframes, qmask, scale_factor, extra_options)
         self._init_fft_plans(precompute_fft_plans)
 
-    def _set_parameters(
-        self, shape, nframes, qmask, weights, scale_factor, extra_options
-    ):
-        self.nframes = nframes
-        # Ugly !
-        OpenclCorrelator._set_shape(self, shape)
-        OpenclCorrelator._set_qmask(self, qmask=qmask)
-        # OpenclCorrelator._set_weights(self, weights=weights)
-        OpenclCorrelator._set_scale_factor(self, scale_factor=scale_factor)
-        # ---
-        self._configure_extra_options(extra_options)
-
-
     def _configure_extra_options(self, extra_options):
-        self.extra_options = {
-            "save_fft_plans": True,
-        }
-        if extra_options is not None:
-            self.extra_options.update(extra_options)
+        BaseCorrelator._configure_extra_options(self, extra_options)
+        self.extra_options["save_fft_plans"] =  True
 
     def _init_fft_plans(self, precompute_fft_plans):
         """
@@ -222,9 +208,10 @@ class DenseFFTCorrelator(object):
                 n_mask_pixels = (self.qmask == bin_val).sum()
             fft_size = int(nextpow2(2 * self.nframes * int(n_mask_pixels)))
             self.fft_sizes[bin_val] = fft_size
-            self.ffts[bin_val] = CUFFT(
-                template=np.zeros(fft_size, dtype=np.float32)
-            ) if precompute_fft_plans else None
+            if precompute_fft_plans:
+                self.ffts[bin_val] = CUFFT(template=np.zeros(fft_size, dtype=np.float32))  
+            else:
+                self.ffts[bin_val] = None
 
     @staticmethod
     def _compute_denom_means(frames):
@@ -278,8 +265,6 @@ class DenseFFTCorrelator(object):
 
         return numerator/denominator/self.scale_factors[bin_val]
 
-
-
     def get_pixels_in_bin(self, frames, bin_val, check=True, convert_to_float=True):
         """
         From a stack of frames, extract the pixels belonging to a given bin.
@@ -312,7 +297,6 @@ class DenseFFTCorrelator(object):
         if convert_to_float:
             res = np.ascontiguousarray(res, dtype=np.float32)
         return res
-
 
     def correlate(self, frames):
         bins = [0] if self.bins is None else self.bins
