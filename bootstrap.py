@@ -10,7 +10,7 @@ example: ./bootstrap.py ipython
 __authors__ = ["Frédéric-Emmanuel Picca", "Jérôme Kieffer"]
 __contact__ = "jerome.kieffer@esrf.eu"
 __license__ = "MIT"
-__date__ = "26/07/2018"
+__date__ = "05/09/2019"
 
 
 import sys
@@ -236,14 +236,14 @@ def main(argv):
         logger.info("Patch the sys.argv: %s", sys.argv)
         sys.path.insert(2, "")
         try:
-            from IPython import embed
+            from IPython import start_ipython
         except Exception as err:
             logger.error("Unable to execute iPython, using normal Python")
             logger.error(err)
             import code
             code.interact()
         else:
-            embed()
+            start_ipython(argv=[])
 
 
 if __name__ == "__main__":
