@@ -185,7 +185,7 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
             assert my_array.dtype == array.dtype
             if isinstance(array, np.ndarray):
                 my_array.set(array)
-            elif isinstance(parray.Array):
+            elif isinstance(array, parray.Array):
                 setattr(self, "_old_" + my_array_name, my_array)
                 setattr(self, my_array_name, array)
             else: # support buffers ?
