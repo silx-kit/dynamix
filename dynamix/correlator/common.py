@@ -32,8 +32,9 @@ class OpenclCorrelator(OpenclProcessing):
         Parameters
         -----------
 
-        shape: tuple
-            Shape of each XPCS frame.
+        shape: tuple or int
+            Shape of each XPCS frame. If shape is an integer, the frames are
+            assumed to be square.
         nframes: int
             Number of frames
         qmask: numpy.ndarray, optional

@@ -31,7 +31,7 @@ dataset_andor_10k = DatasetDescription(
 )
 
 dataset_andor_3k = DatasetDescription(
-    name="andor_1024_10k",
+    name="andor_1024_3k",
     data="Fe79_Andor_3000.npz",
     result="wcf_Fe79_ramp1_240C_down_1_3000_raw.npz",
     description="""
