@@ -151,12 +151,12 @@ class OpenclCorrelator(OpenclProcessing):
             self.extra_options.update(extra_options)
 
     def _allocate_memory(self):
-        self.d_output = parray.zeros(
-            self.queue,
-            self.output_shape,
-            self.output_dtype
-        )
-        self.d_norm_mask = parray.to_device(self.queue, self.weights)
+        # self.d_output = parray.zeros(
+        #     self.queue,
+        #     self.output_shape,
+        #     self.output_dtype
+        # )
+        # self.d_norm_mask = parray.to_device(self.queue, self.weights)
         if self.qmask is not None:
             self.d_qmask = parray.to_device(self.queue, self.qmask)
 

@@ -10,10 +10,11 @@ class EventCorrelator(OpenclCorrelator):
 
 
     def __init__(
-        self, shape, nframes, total_events_count, allow_reallocate=True,
-        dtype="f", bins=0, weights=None, extra_options={},
-        ctx=None, devicetype="all", platformid=None, deviceid=None,
-        block_size=None, memory=None, profile=False
+        self, shape, nframes,
+        max_events_count, total_events_count=None, allow_reallocate=True,
+        qmask=None, dtype="f", weights=None, scale_factor=None,
+        extra_options={}, ctx=None, devicetype="all", platformid=None,
+        deviceid=None, block_size=None, memory=None, profile=False
     ):
         """
         Initialize an EventCorrelator instance.
@@ -25,8 +26,16 @@ class EventCorrelator(OpenclCorrelator):
         Specific parameters
         --------------------
         max_events_count: int
-            Expected number of events (non-zero values) in all the frames.
-            axis. If `frames_stack` is a numpy.ndarray of shape
+            Expected maximum number of events (non-zero values) in the frames
+            along the time axis. If `frames_stack` is a numpy.ndarray of shape
+            `(n_frames, n_y, n_x)`, then `total_events_count` can be computed as
+
+            ```python
+            (frames_stack > 0).sum(axis=0).max()
+            ```
+        total_events_count: int, optional
+            Expected total number of events (non-zero values) in all the frames.
+            If `frames_stack` is a numpy.ndarray of shape
             `(n_frames, n_y, n_x)`, then `total_events_count` can be computed as
 
             ```python
@@ -34,12 +43,13 @@ class EventCorrelator(OpenclCorrelator):
             ```
         """
         super().__init__(
-            shape, nframes, dtype=dtype, bins=bins, weights=weights,
-            extra_options=extra_options,
+            shape, nframes, qmask=qmask, dtype=dtype, weights=weights,
+            scale_factor=scale_factor, extra_options=extra_options,
             ctx=ctx, devicetype=devicetype, platformid=platformid,
             deviceid=deviceid, block_size=block_size, memory=memory,
             profile=profile
         )
+        self.max_events_count = max_events_count
         self._events_count = total_events_count
         self.allow_reallocate = allow_reallocate
         self._allocate_events_arrays()
@@ -55,10 +65,10 @@ class EventCorrelator(OpenclCorrelator):
                 "-DDTYPE=%s" % self.c_dtype,
                 "-DSUM_WG_SIZE=%d" % 1024, # TODO tune ?
                 "-DMAX_EVT_COUNT=%d" % self.max_events_count,
-                "-DSCALE_FACTOR=%f" % (1./(np.prod(self.shape))),
+                "-DSCALE_FACTOR=%f" % self.scale_factors[0], # TODO multi-bin
             ]
         )
-        self.correlation_kernel = self.kernels.get_kernel("event_correlator_oneQ_simple") # TODO tune
+        self.correlation_kernel = self.kernels.get_kernel("event_correlator_oneQ") # TODO tune
         self.normalization_kernel = self.kernels.get_kernel("normalize_correlation_oneQ") # TODO tune
 
         self.grid = self.shape[::-1]
@@ -66,11 +76,15 @@ class EventCorrelator(OpenclCorrelator):
 
 
     def _allocate_events_arrays(self, is_reallocating=False):
-        tot_nnz = self._events_count
+        tot_nnz = self._events_count or self.max_events_count * np.prod(self.shape)
 
         self.d_vol_times = parray.zeros(self.queue, tot_nnz, dtype=np.int32)
         self.d_vol_data = parray.zeros(self.queue, tot_nnz, dtype=self.dtype)
         self.d_offsets = parray.zeros(self.queue, np.prod(self.shape)+1, dtype=np.uint32)
+
+        self._old_d_vol_times = None
+        self._old_d_vol_data = None
+        self._old_d_offsets = None
 
         if not(is_reallocating):
             self.d_res_int = parray.zeros(self.queue, self.nframes, dtype=np.int32)
@@ -100,6 +114,9 @@ class EventCorrelator(OpenclCorrelator):
             "offsets": offsets
         })
 
+        self.d_res.fill(0)
+        self.d_sums.fill(0)
+
         evt = self.correlation_kernel(
             self.queue,
             self.grid,
@@ -126,7 +143,7 @@ class EventCorrelator(OpenclCorrelator):
         evt.wait()
         self.profile_add(evt, "Normalization")
 
-        self._reset_arrays(["d_vol_times", "d_vol_data", "d_ctr"])
+        self._reset_arrays(["vol_times", "vol_data", "offsets"])
 
         return self.d_res.get()
 
@@ -147,8 +164,9 @@ class EventCorrelator(OpenclCorrelator):
         res_data = framesT[nnz_indices]
         res_times = times[nnz_indices[-1]]
 
-        offsets = np.unique(np.cumsum((framesT > 0).sum(axis=-1).ravel()))
-        res_offsets = np.ascontiguousarray(offsets, dtype=np.uint32)
+        offsets = np.cumsum((frames > 0).sum(axis=0).ravel())
+        res_offsets = np.zeros(np.prod(frames.shape[1:])+1, dtype=np.uint32)
+        res_offsets[1:] = offsets[:]
 
         return res_data, res_times, res_offsets
 
