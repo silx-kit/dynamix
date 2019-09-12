@@ -6,10 +6,81 @@ from pyopencl.tools import dtype_to_ctype
 from silx.opencl.common import pyopencl as cl
 from silx.opencl.processing import OpenclProcessing, KernelContainer
 
-from ..utils import get_opencl_srcfile
+
+class BaseCorrelator(object):
+    "Abstract base class for all Correlators"
+    def __init__(self):
+        self.nframes = None
+        self.shape = None
+        self.bins = None
+        self.n_bins = None
+        self.output_shape = None
+        self.weights = None
+        self.scale_factors = None
+    
+    def _set_parameters(self, shape, nframes, qmask, scale_factor, extra_options):
+        self.nframes = nframes
+        self._set_shape(shape)
+        self._set_qmask(qmask=qmask)
+        self._set_scale_factor(scale_factor=scale_factor)
+        self._configure_extra_options(extra_options)
+
+    def _set_shape(self, shape):
+        if np.isscalar(shape):
+            self.shape = (int(shape), int(shape))
+        else:
+            assert len(shape) == 2
+            self.shape = shape
+
+    def _set_qmask(self, qmask=None):
+        self.qmask = None
+        if qmask is None:
+            self.bins = None
+            self.n_bins = 0
+            self.output_shape = (self.nframes, )
+        else:
+            self.qmask = np.ascontiguousarray(qmask, dtype=np.int32)
+            self.bins = np.unique(self.qmask)[1:] # TODO check that zero is not here
+            self.n_bins = self.bins.size
+            self.output_shape = (self.n_bins, self.nframes)
+            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.int32) #
 
 
-class OpenclCorrelator(OpenclProcessing):
+    def _set_weights(self, weights=None):
+        if weights is None:
+            self.weights = np.ones(self.shape, dtype=self.output_dtype)
+            return
+        assert weights.shape == self.shape
+        self.weights = np.ascontiguousarray(weights, dtype=self.output_dtype)
+        raise ValueError("Advanced weighting is not implemented yet")
+
+    def _set_scale_factor(self, scale_factor=None):
+        if self.n_bins == 0:
+            s = scale_factor or np.prod(self.shape)
+            self.scale_factors = {0: s}
+            return
+        if scale_factor is not None:
+            assert np.iterable(scale_factor)
+            assert len(scale_factor) == self.n_bins
+            if isinstance(scale_factor, dict):
+                self.scale_factors = scale_factor
+            else:
+                self.scale_factors = {k: v for k, v in zip(self.bins, scale_factor)}
+        else:
+            self.scale_factors = {}
+            for bin_val in self.bins:
+                self.scale_factors[bin_val] = np.sum(self.qmask == bin_val)
+
+    def _configure_extra_options(self, extra_options):
+        """
+        :param extra_options: dict
+        """
+        self.extra_options = {}
+        if extra_options is not None:
+            self.extra_options.update(extra_options)
+
+
+class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
 
     def __init__(
         self, shape, nframes, qmask=None, dtype=np.int8, weights=None,
@@ -70,31 +141,16 @@ class OpenclCorrelator(OpenclProcessing):
             deviceid=deviceid, block_size=block_size, memory=memory,
             profile=profile
         )
-        self._set_parameters(
-            shape, nframes, dtype, qmask, weights, scale_factor, extra_options
-        )
+        BaseCorrelator.__init__(self)
+        self._set_parameters(shape, nframes, dtype, qmask, weights, scale_factor, extra_options)
         self._allocate_memory()
 
-    def _set_parameters(
-        self, shape, nframes, dtype, qmask, weights, scale_factor, extra_options
-    ):
-        self.nframes = nframes
-        self._set_shape(shape)
-        self._set_dtype(dtype=dtype)
-        self._set_qmask(qmask=qmask)
-        self._set_weights(weights=weights)
-        self._set_scale_factor(scale_factor=scale_factor)
-        self._configure_extra_options(extra_options)
-        self.is_cpu = (self.device.type == "CPU") # move to OpenclProcessing ?
-
-
-    def _set_shape(self, shape):
-        if np.isscalar(shape):
-            self.shape = (int(shape), int(shape))
-        else:
-            assert len(shape) == 2
-            self.shape = shape
-
+    def _set_parameters(self, shape, nframes, dtype, qmask, weights, scale_factor, extra_options):
+        BaseCorrelator._set_parameters(self, shape, nframes, qmask, scale_factor, extra_options)
+        self._set_dtype(dtype)
+        self._set_weights(weights)
+        self.is_cpu = (self.device.type == "CPU")
+       
     def _set_dtype(self, dtype="f"):
         # add checks ?
         self.dtype = dtype
@@ -104,50 +160,6 @@ class OpenclCorrelator(OpenclProcessing):
         self.c_sums_dtype = dtype_to_ctype(self.sums_dtype)
         self.idx_c_dtype = "int" # TODO custom ?
 
-    def _set_qmask(self, qmask=None):
-        self.qmask = None
-        if qmask is None:
-            self.bins = None
-            self.n_bins = 0
-            self.output_shape = (self.nframes, )
-        else:
-            self.qmask = np.ascontiguousarray(qmask, dtype=np.int32)
-            self.bins = np.unique(self.qmask)[1:] # TODO check that zero is not here
-            self.n_bins = self.bins.size
-            self.output_shape = (self.n_bins, self.nframes)
-            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.int32) #
-
-    def _set_weights(self, weights=None):
-        if weights is None:
-            self.weights = np.ones(self.shape, dtype=self.output_dtype)
-            return
-        assert weights.shape == self.shape
-        self.weights = np.ascontiguousarray(weights, dtype=self.output_dtype)
-        raise ValueError("Advanced weighting is not implemented yet")
-
-    def _set_scale_factor(self, scale_factor=None):
-        if self.n_bins == 0:
-            s = scale_factor or np.prod(self.shape)
-            self.scale_factors = {0: s}
-            return
-        if scale_factor is not None:
-            assert np.iterable(scale_factor)
-            assert len(scale_factor) == self.n_bins
-            if isinstance(scale_factor, dict):
-                self.scale_factors = scale_factor
-            else:
-                self.scale_factors = {k: v for k, v in zip(self.bins, scale_factor)}
-        else:
-            self.scale_factors = {}
-            for bin_val in self.bins:
-                self.scale_factors[bin_val] = np.sum(self.qmask == bin_val)
-
-
-
-    def _configure_extra_options(self, extra_options):
-        self.extra_options = {}
-        if extra_options is not None:
-            self.extra_options.update(extra_options)
 
     def _allocate_memory(self):
         self.d_output = parray.zeros(
@@ -173,7 +185,7 @@ class OpenclCorrelator(OpenclProcessing):
             assert my_array.dtype == array.dtype
             if isinstance(array, np.ndarray):
                 my_array.set(array)
-            elif isinstance(parray.Array):
+            elif isinstance(array, parray.Array):
                 setattr(self, "_old_" + my_array_name, my_array)
                 setattr(self, my_array_name, array)
             else: # support buffers ?

@@ -22,7 +22,7 @@
 # THE SOFTWARE.
 #
 # ###########################################################################*/
-"""This package provides access to the full dynamix test suite.
+"""test suite builder for the different correlators.
 
 """
 
@@ -30,10 +30,11 @@ __authors__ = ["J. Kieffer"]
 __license__ = "MIT"
 __date__ = "04/09/2019"
 
+
 from unittest import TestSuite
-from ..correlator import test 
+from . import test_dense 
 
 def suite():
     testsuite = TestSuite()
-    testsuite.addTest(test.suite())
+    testsuite.addTest(test_dense.suite())
     return testsuite

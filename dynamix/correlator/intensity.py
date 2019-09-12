@@ -1,5 +1,6 @@
 import numpy as np
 from silx.opencl.common import pyopencl as cl
+from .common import OpenclCorrelator
 from silx.opencl.processing import OpenclProcessing, KernelContainer
 from pyopencl.tools import dtype_to_ctype
 import pyopencl.array as parray

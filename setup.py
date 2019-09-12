@@ -24,16 +24,16 @@ def setup_package():
         "correlator",
         "resources",
     ]
-    packages = ["dynamix"]
-    package_dir = {"dynamix": "dynamix"}
-    tests_folders = []
+    packages = ["dynamix", "dynamix.test"]
+    package_dir = {"dynamix": "dynamix",
+                   "dynamix.test": "dynamix/test"}
     for f in packages_folders:
         modulename = str("dynamix.%s" % f)
         packages.append(modulename)
         package_dir[modulename] = os.path.join("dynamix", f)
-        module_test_dirname = os.path.join(package_dir[modulename], "tests")
+        module_test_dirname = os.path.join(package_dir[modulename], "test")
         if os.path.isdir(module_test_dirname):
-            modulename_test = str("%s.tests" % modulename)
+            modulename_test = str("%s.test" % modulename)
             packages.append(modulename_test)
             package_dir[modulename_test] = module_test_dirname
     setup(
