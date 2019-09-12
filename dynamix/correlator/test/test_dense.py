@@ -1,9 +1,42 @@
+# coding: utf-8
+# /*##########################################################################
+#
+# Copyright (c) 2019-2019 European Synchrotron Radiation Facility
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+#
+# ###########################################################################*/
+"""tests for the dense correlator.
+
+"""
+
+__authors__ = ["P. Paleo"]
+__license__ = "MIT"
+__date__ = "04/09/2019"
+
+
 from time import time
 import logging
 import unittest
 import numpy as np
 from dynamix.test.utils import XPCSDataset
-from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, CUFFT, DenseFFTCorrelator
+from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, CUFFT, DenseCuFFTCorrelator, pyfftw, DenseFFTwCorrelator
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -69,10 +102,10 @@ class TestDense(unittest.TestCase):
         logger.info("OpenCL dense correlator took %.1f ms" % ((time() - t0)*1e3))
         self.compare(res, "OpenCL dense correlator")
 
-    def test_fft_dense_correlator(self):
+    def test_cufft_dense_correlator(self):
         if not(CUFFT):
             self.skipTest("Need pycuda and scikit-cuda")
-        self.fftcorrelator = DenseFFTCorrelator(
+        self.fftcorrelator = DenseCuFFTCorrelator(
             self.shape,
             self.nframes,
             qmask=self.dataset.qmask,
@@ -82,6 +115,20 @@ class TestDense(unittest.TestCase):
         res = self.fftcorrelator.correlate(self.dataset.data)
         logger.info("Cuda FFT dense correlator took %.1f ms" % ((time() - t0)*1e3))
         self.compare(res, "Cuda FFT dense correlator")
+
+    def test_fftw_dense_correlator(self):
+        if not(pyfftw):
+            self.skipTest("Need pyfftw")
+        self.fftcorrelator = DenseFFTwCorrelator(
+            self.shape,
+            self.nframes,
+            qmask=self.dataset.qmask,
+            extra_options={"save_fft_plans": False}
+        )
+        t0 = time()
+        res = self.fftcorrelator.correlate(self.dataset.data)
+        logger.info("FFTw dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        self.compare(res, "FFTw dense correlator")
 
 
 def suite():

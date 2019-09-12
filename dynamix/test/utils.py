@@ -73,9 +73,22 @@ dataset_eiger_20k = DatasetDescription(
     bins=None,
 )
 
+dataset_al_600 =DatasetDescription(
+    name="Al_512_600",
+    data="Al_600.npz",
+    result="unknown.npz",
+    description="""
+        XPCS simulated data of Al crystal melting with a detector of 512x512 pixels, 600 frames.
+        Dense dataset !
+    """,
+    nframes=600,
+    frame_shape=(512, 512),
+    dtype=np.uint32,
+    bins=None,
+) 
 
 def get_datasets():
-    datasets = [dataset_andor_10k, dataset_andor_3k, dataset_eiger_10k, dataset_eiger_20k]
+    datasets = [dataset_andor_10k, dataset_andor_3k, dataset_eiger_10k, dataset_eiger_20k, dataset_al_600]
     res = {}
     for dataset in datasets:
         res[dataset.name] = dataset
