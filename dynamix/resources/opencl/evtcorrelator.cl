@@ -1,4 +1,5 @@
-// Launched with (image_width, image_width) grid of threads.
+// Launched with (image_width, image_height) grid of threads.
+// One thread handle one line of events, so threads are indexes by frame pixel indices.
 kernel void event_correlator_oneQ(
     const global int* vol_times_array,
     const global DTYPE* vol_data_array,

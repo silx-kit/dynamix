@@ -76,7 +76,9 @@ class EventCorrelator(OpenclCorrelator):
 
 
     def _allocate_events_arrays(self, is_reallocating=False):
-        tot_nnz = self._events_count or self.max_events_count * np.prod(self.shape)
+        if self._events_count is None:
+            self._events_count = self.max_events_count * np.prod(self.shape)
+        tot_nnz = self._events_count
 
         self.d_vol_times = parray.zeros(self.queue, tot_nnz, dtype=np.int32)
         self.d_vol_data = parray.zeros(self.queue, tot_nnz, dtype=self.dtype)
