@@ -150,31 +150,6 @@ class EventCorrelator(OpenclCorrelator):
 
 
 
-    @staticmethod
-    def build_events_structure(frames):
-        """
-        Helper function to build the events data structure from a stack of frames.
-        It returns a tuple (data, times, offsets).
-        """
-        assert frames.ndim == 3
-        framesT = np.moveaxis(frames, 0, -1)
-        times = np.arange(frames.shape[0], dtype=np.int32)
-        nnz_indices = np.where(framesT > 0)
-
-        res_data = framesT[nnz_indices]
-        res_times = times[nnz_indices[-1]]
-
-        offsets = np.cumsum((frames > 0).sum(axis=0).ravel())
-        res_offsets = np.zeros(np.prod(frames.shape[1:])+1, dtype=np.uint32)
-        res_offsets[1:] = offsets[:]
-
-        return res_data, res_times, res_offsets
-
-
-
-
-
-
 
 """
 Let `frames` be a stack of `Nt` frames, each of them having `Nx * Ny` pixels.
@@ -217,3 +192,85 @@ and so on.
 
 
 """
+
+
+
+class FramesCompressor(object):
+    """
+    A class for compressing frames on-the-fly.
+    """
+
+    def __init__(self, shape, nframes, max_nnz, dtype=np.int8):
+        self.shape = shape
+        self.nframes = nframes
+        self.dtype = dtype
+        self.max_nnz = max_nnz
+        self.npix = np.prod(self.shape)
+        self._init_events_datastructure()
+
+
+    def _init_events_datastructure(self):
+        self.events_counter = np.zeros(self.npix, dtype=np.int32)
+        self.events = np.zeros((self.npix, self.max_nnz), dtype=self.dtype)
+        self.times = np.zeros((self.npix, self.max_nnz), dtype=np.int32)
+        self.frames_counter = 0
+
+
+    @staticmethod
+    def compress_all_stack(frames):
+        """
+        Build the whole event structure assuming that all the frames are given.
+        """
+        assert frames.ndim == 3
+        framesT = np.moveaxis(frames, 0, -1)
+        times = np.arange(frames.shape[0], dtype=np.int32)
+        nnz_indices = np.where(framesT > 0)
+
+        res_data = framesT[nnz_indices]
+        res_times = times[nnz_indices[-1]]
+
+        offsets = np.cumsum((frames > 0).sum(axis=0).ravel())
+        res_offsets = np.zeros(np.prod(frames.shape[1:])+1, dtype=np.uint32)
+        res_offsets[1:] = offsets[:]
+
+        return res_data, res_times, res_offsets
+
+
+    def process_frame(self, frame):
+        """
+        Compress a single frame, and update the events stack state.
+        """
+        frame1d = frame.ravel()
+
+        mask = frame1d > 0
+        self.events[mask, self.events_counter[mask]] = frame1d[mask]
+        self.times[mask, self.events_counter[mask]] = self.frames_counter
+        self.events_counter[mask] += 1
+        self.frames_counter += 1
+
+
+    def get_compacted_events(self, wait_for_all_frames=True):
+        """
+        Compact all compressed frames into three 1D structures:
+          - events: 1D array containing all the nonzero data points
+          - times: time indices corresponding to nonzero data points
+          - offsets: events[offsets[k]:offsets[k+1]] corresponds to all events for pixel index k
+        """
+        if self.frames_counter < self.nframes - 1 and wait_for_all_frames:
+            raise RuntimeError(
+                "Not all frames were compressed yet (%d/%d)" %
+                (self.frames_counter, self.nframes)
+            )
+        offsets = np.zeros(
+            self.events_counter.size + 1, dtype=np.uint32
+        )
+        offsets[1:] = np.cumsum(self.events_counter)
+
+        m = self.events.ravel() > 0
+        events = self.events.ravel()[m]
+        times = self.times.ravel()[m]
+
+        return events, times, offsets
+
+
+
