@@ -49,11 +49,15 @@ class EventCorrelator(OpenclCorrelator):
             deviceid=deviceid, block_size=block_size, memory=memory,
             profile=profile
         )
-        self.max_events_count = max_events_count
-        self._events_count = total_events_count
+        self._set_events_size(max_events_count, total_events_count)
         self.allow_reallocate = allow_reallocate
         self._allocate_events_arrays()
         self._setup_kernels()
+
+
+    def _set_events_size(self, max_events_count, total_events_count):
+        self.max_events_count = max_events_count
+        self.total_events_count = total_events_count or max_events_count * np.prod(self.shape)
 
 
     def _setup_kernels(self):
@@ -65,7 +69,7 @@ class EventCorrelator(OpenclCorrelator):
                 "-DDTYPE=%s" % self.c_dtype,
                 "-DSUM_WG_SIZE=%d" % 1024, # TODO tune ?
                 "-DMAX_EVT_COUNT=%d" % self.max_events_count,
-                "-DSCALE_FACTOR=%f" % self.scale_factors[0], # TODO multi-bin
+                "-DSCALE_FACTOR=%f" % self.scale_factors[1], # TODO multi-bin
             ]
         )
         self.correlation_kernel = self.kernels.get_kernel("event_correlator_oneQ") # TODO tune
@@ -76,9 +80,7 @@ class EventCorrelator(OpenclCorrelator):
 
 
     def _allocate_events_arrays(self, is_reallocating=False):
-        if self._events_count is None:
-            self._events_count = self.max_events_count * np.prod(self.shape)
-        tot_nnz = self._events_count
+        tot_nnz = self.total_events_count
 
         self.d_vol_times = parray.zeros(self.queue, tot_nnz, dtype=np.int32)
         self.d_vol_data = parray.zeros(self.queue, tot_nnz, dtype=self.dtype)
@@ -89,9 +91,9 @@ class EventCorrelator(OpenclCorrelator):
         self._old_d_offsets = None
 
         if not(is_reallocating):
-            self.d_res_int = parray.zeros(self.queue, self.nframes, dtype=np.int32)
-            self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32)
-            self.d_res = parray.zeros(self.queue, self.nframes, np.float32)
+            self.d_res_int = parray.zeros(self.queue, self.output_shape, dtype=np.int32)
+            self.d_sums = parray.zeros(self.queue, self.output_shape, np.uint32)
+            self.d_res = parray.zeros(self.queue, self.output_shape, np.float32)
 
 
     def _check_event_arrays(self, vol_times, vol_data, offsets):
@@ -100,9 +102,9 @@ class EventCorrelator(OpenclCorrelator):
         assert vol_times.size == vol_data.size
         assert offsets.size == np.prod(self.shape) + 1
         numels = vol_data.size
-        if numels > self._events_count:
+        if numels > self.total_events_count:
             if self.allow_reallocate:
-                self._events_count = numels
+                self.total_events_count = numels
                 self._allocate_events_arrays(is_reallocating=True)
             else:
                 raise ValueError("Too many events and allow_reallocate was set to False")
@@ -126,8 +128,10 @@ class EventCorrelator(OpenclCorrelator):
             self.d_vol_times.data,
             self.d_vol_data.data,
             self.d_offsets.data,
+            self.d_qmask.data,
             self.d_res_int.data,
             self.d_sums.data,
+            np.int32(self.shape[1]),
             np.int32(self.nframes)
         )
         evt.wait()

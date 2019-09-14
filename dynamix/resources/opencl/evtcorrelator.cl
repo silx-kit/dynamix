@@ -4,16 +4,20 @@ kernel void event_correlator_oneQ(
     const global int* vol_times_array,
     const global DTYPE* vol_data_array,
     const global uint* offsets,
+    const global int* q_mask,
     global int* res_tau,
     global uint* sums,
-    int image_height
+    int image_height,
+    int Nt
 ) {
     uint x = get_global_id(0);
     uint y = get_global_id(1);
-
     if ((x >= IMAGE_WIDTH) || (y >= image_height)) return;
-
     uint pos = y*IMAGE_WIDTH + x;
+
+    int bin_idx = q_mask[pos] - 1;
+    if (bin_idx < 0) return;
+
     uint offset = offsets[pos];
     int n_events = offsets[pos+1] - offset;
     if (n_events == 0) return;
@@ -29,20 +33,17 @@ kernel void event_correlator_oneQ(
         data[i] = vol_data[i];
     }
 
-    // Compute r(p, t, t-tau)
-    DTYPE sum = 0;
+    // Compute the correlatin and store the result in the current bin
+    global uint* my_res_tau = res_tau + bin_idx * Nt;
+    global uint* my_sums = sums + bin_idx * Nt;
     for (int i_tau = 0; i_tau < n_events; i_tau++) {
-        atomic_add(sums + times[i_tau], data[i_tau]);
+        atomic_add(my_sums + times[i_tau], data[i_tau]);
         for (int i_t = i_tau; i_t < n_events; i_t++) {
             int tau = times[i_t] - times[i_t - i_tau];
-            atomic_add(res_tau + tau, data[i_t] * data[i_t - i_tau]);
+            atomic_add(my_res_tau + tau, data[i_t] * data[i_t - i_tau]);
         }
     }
 }
-
-
-
-
 
 
 #ifndef SCALE_FACTOR
@@ -64,7 +65,7 @@ kernel void normalize_correlation_oneQ(
     for (int t = tau; t < Nt; t++) {
         s += (sums[t] * sums[t - tau]);
     }
-    s /= SCALE_FACTOR;
+    s /= SCALE_FACTOR; // passing 1/scale_factor in preprocessor is not numerically accurate
     res[tau] = res_int[tau] / s;
 }
 

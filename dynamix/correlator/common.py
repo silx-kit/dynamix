@@ -17,7 +17,7 @@ class BaseCorrelator(object):
         self.output_shape = None
         self.weights = None
         self.scale_factors = None
-    
+
     def _set_parameters(self, shape, nframes, qmask, scale_factor, extra_options):
         self.nframes = nframes
         self._set_shape(shape)
@@ -35,15 +35,14 @@ class BaseCorrelator(object):
     def _set_qmask(self, qmask=None):
         self.qmask = None
         if qmask is None:
-            self.bins = None
-            self.n_bins = 0
-            self.output_shape = (self.nframes, )
+            self.bins = np.array([1], dtype=np.int32)
+            self.n_bins = 1
+            self.qmask = np.ones(self.shape, dtype=np.int32)
         else:
             self.qmask = np.ascontiguousarray(qmask, dtype=np.int32)
             self.bins = np.unique(self.qmask)[1:] # TODO check that zero is not here
             self.n_bins = self.bins.size
-            self.output_shape = (self.n_bins, self.nframes)
-            self.qmask = np.ascontiguousarray(self.qmask, dtype=np.int32) #
+        self.output_shape = (self.n_bins, self.nframes)
 
 
     def _set_weights(self, weights=None):
@@ -57,7 +56,7 @@ class BaseCorrelator(object):
     def _set_scale_factor(self, scale_factor=None):
         if self.n_bins == 0:
             s = scale_factor or np.prod(self.shape)
-            self.scale_factors = {0: s}
+            self.scale_factors = {1: s}
             return
         if scale_factor is not None:
             assert np.iterable(scale_factor)
@@ -151,7 +150,7 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         self._set_dtype(dtype)
         self._set_weights(weights)
         self.is_cpu = (self.device.type == "CPU")
-       
+
     def _set_dtype(self, dtype="f"):
         # add checks ?
         self.dtype = dtype
@@ -163,11 +162,6 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
 
 
     def _allocate_memory(self):
-        # self.d_output = parray.zeros(
-        #     self.queue,
-        #     self.output_shape,
-        #     self.output_dtype
-        # )
         # self.d_norm_mask = parray.to_device(self.queue, self.weights)
         if self.qmask is not None:
             self.d_qmask = parray.to_device(self.queue, self.qmask)
