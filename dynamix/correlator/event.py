@@ -72,8 +72,8 @@ class EventCorrelator(OpenclCorrelator):
                 "-DSCALE_FACTOR=%f" % self.scale_factors[1], # TODO multi-bin
             ]
         )
-        self.correlation_kernel = self.kernels.get_kernel("event_correlator_oneQ") # TODO tune
-        self.normalization_kernel = self.kernels.get_kernel("normalize_correlation_oneQ") # TODO tune
+        self.correlation_kernel = self.kernels.get_kernel("event_correlator")
+        self.normalization_kernel = self.kernels.get_kernel("normalize_correlation_oneQ")
 
         self.grid = self.shape[::-1]
         self.wg = None # tune ?

@@ -1,6 +1,6 @@
 // Launched with (image_width, image_height) grid of threads.
 // One thread handle one line of events, so threads are indexes by frame pixel indices.
-kernel void event_correlator_oneQ(
+kernel void event_correlator(
     const global int* vol_times_array,
     const global DTYPE* vol_data_array,
     const global uint* offsets,
@@ -53,19 +53,25 @@ kernel void event_correlator_oneQ(
 
 // Normalize < <I(t, p) * I(t-tau, p)>_p >_t
 // by  <I(t, p)>_p * <I(t-tau, p)>_p >_t
-kernel void normalize_correlation_oneQ(
+// i.e res_int is divided by correlate(sums, sums, "full")
+// The kernel is launched with a grid size (n_frames, n_bins)
+kernel void normalize_correlation(
     global int* res_int,
     global float* res,
     global uint* sums,
+    global float* scale_factors,
     int Nt
 ) {
     uint tau = get_global_id(0);
-    if (tau >= Nt) return;
-    float s = 0.0f;
+    uint bin_idx = get_global_id(1);
+    if ((tau >= Nt) || (bin_idx >= NUM_BINS)) return;
+
+    global uint* my_sum = sums + bin_idx * Nt;
+    float corr = 0.0f;
     for (int t = tau; t < Nt; t++) {
-        s += (sums[t] * sums[t - tau]);
+        corr += (my_sum[t] * my_sum[t - tau]);
     }
-    s /= SCALE_FACTOR; // passing 1/scale_factor in preprocessor is not numerically accurate
-    res[tau] = res_int[tau] / s;
+    corr /= scale_factors[bin_idx]; // passing 1/scale_factor in preprocessor is not numerically accurate
+    res[bin_idx + Nt + tau] = res_int[bin_idx*Nt + tau] / corr;
 }
 
