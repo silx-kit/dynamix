@@ -69,11 +69,12 @@ class EventCorrelator(OpenclCorrelator):
                 "-DDTYPE=%s" % self.c_dtype,
                 "-DSUM_WG_SIZE=%d" % 1024, # TODO tune ?
                 "-DMAX_EVT_COUNT=%d" % self.max_events_count,
-                "-DSCALE_FACTOR=%f" % self.scale_factors[1], # TODO multi-bin
+                "-DSCALE_FACTOR=%f" % self.scale_factors[1],
+                "-DNUM_BINS=%d" % self.n_bins,
             ]
         )
         self.correlation_kernel = self.kernels.get_kernel("event_correlator")
-        self.normalization_kernel = self.kernels.get_kernel("normalize_correlation_oneQ")
+        self.normalization_kernel = self.kernels.get_kernel("normalize_correlation")
 
         self.grid = self.shape[::-1]
         self.wg = None # tune ?
@@ -94,6 +95,7 @@ class EventCorrelator(OpenclCorrelator):
             self.d_res_int = parray.zeros(self.queue, self.output_shape, dtype=np.int32)
             self.d_sums = parray.zeros(self.queue, self.output_shape, np.uint32)
             self.d_res = parray.zeros(self.queue, self.output_shape, np.float32)
+            self.d_scale_factors = parray.to_device(self.queue, np.array(list(self.scale_factors.values()), dtype=np.float32))
 
 
     def _check_event_arrays(self, vol_times, vol_data, offsets):
@@ -139,11 +141,12 @@ class EventCorrelator(OpenclCorrelator):
 
         evt = self.normalization_kernel(
             self.queue,
-            (self.nframes, 1),
+            (self.nframes, self.n_bins),
             None, # tune wg ?
             self.d_res_int.data,
             self.d_res.data,
             self.d_sums.data,
+            self.d_scale_factors.data,
             np.int32(self.nframes)
         )
         evt.wait()

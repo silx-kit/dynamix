@@ -59,7 +59,8 @@ class BaseCorrelator(object):
             self.scale_factors = {1: s}
             return
         if scale_factor is not None:
-            assert np.iterable(scale_factor)
+            if not(np.iterable(scale_factor)):
+                scale_factor = [scale_factor]
             assert len(scale_factor) == self.n_bins
             if isinstance(scale_factor, dict):
                 self.scale_factors = scale_factor
@@ -176,7 +177,8 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         for arr_name, array in arrays.items():
             my_array_name = "d_" + arr_name
             my_array = getattr(self, my_array_name)
-            assert my_array.shape == array.shape
+            assert my_array.shape == array.shape, "%s should have shape %s, got %s" % (my_array_name, str(my_array.shape), str(array.shape))
+
             assert my_array.dtype == array.dtype
             if isinstance(array, np.ndarray):
                 my_array.set(array)

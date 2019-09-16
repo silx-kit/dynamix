@@ -72,6 +72,6 @@ kernel void normalize_correlation(
         corr += (my_sum[t] * my_sum[t - tau]);
     }
     corr /= scale_factors[bin_idx]; // passing 1/scale_factor in preprocessor is not numerically accurate
-    res[bin_idx + Nt + tau] = res_int[bin_idx*Nt + tau] / corr;
+    res[bin_idx * Nt + tau] = res_int[bin_idx*Nt + tau] / corr;
 }
 

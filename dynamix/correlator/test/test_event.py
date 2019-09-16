@@ -40,7 +40,7 @@ from dynamix.correlator.event import EventCorrelator, FramesCompressor
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
+logger.setLevel(logging.DEBUG)
 
 class TestEventDataStructure(unittest.TestCase):
 
@@ -79,19 +79,32 @@ class TestEvent(unittest.TestCase):
 
     def setUp(self):
         logger.debug("Loading data")
-        self.dataset = XPCSDataset("andor_1024_10k")
+        # self.dataset = XPCSDataset("andor_1024_10k")
+        self.dataset = XPCSDataset("andor_1024_3k")
+        self.max_nnz = 330 # for andor_1024_10k
+        self.scale_factor = 1025171 # number of pixels actually used
         self.shape = self.dataset.dataset_desc.frame_shape
         self.nframes = self.dataset.dataset_desc.nframes
         self.ref = self.dataset.result
+        self.compact_frames()
         self.tol = 5e-3
 
     def tearDown(self):
         pass
 
+    def compact_frames(self):
+        logger.debug("Compacting frames")
+        self.frames_compressor = FramesCompressor(
+                self.shape,
+                self.nframes,
+                self.max_nnz,
+                dtype=self.dataset.dataset_desc.dtype
+            )
+        self.events_struct = self.frames_compressor.compress_all_stack(self.dataset.data)
 
     def compare(self, res, method_name):
         errors = res[:, 1:] - self.ref
-        errors_max = np.max(np.abs(errors), axis=1)
+        errors_max = np.max(np.abs(errors[:, :-1]), axis=1) # last point is wrong in ref...
 
         for bin_idx in range(errors_max.shape[0]):
             self.assertLess(
@@ -100,18 +113,17 @@ class TestEvent(unittest.TestCase):
             )
 
     def test_event_correlator(self):
+        # Get events data structure
+        vol_data, vol_times, offsets = self.events_struct
         # Init correlator
         self.correlator = EventCorrelator(
             self.shape,
             self.nframes,
             dtype=self.dataset.dataset_desc.dtype,
-            max_events_count=330,
-            scale_factor=1025171, # number of pixels actually used
+            max_events_count=self.max_nnz, # np.diff(offsets).max()
+            total_events_count=vol_data.size,
+            scale_factor=self.scale_factor,
             profile=True
-        )
-        # Build events data structure
-        vol_data, vol_times, offsets = self.correlator.build_events_structure(
-            self.dataset.data
         )
         # Correlate
         t0 = time()
@@ -120,16 +132,16 @@ class TestEvent(unittest.TestCase):
             vol_data,
             offsets
         )
-        logger.info("OpenCL dense correlator took %.1f ms" % ((time() - t0)*1e3))
-        self.compare(res, "OpenCL dense correlator")
+        logger.info("OpenCL event correlator took %.1f ms" % ((time() - t0)*1e3))
+        self.compare(res, "OpenCL event correlator")
 
 
 
 def suite():
     testsuite = unittest.TestSuite()
     testsuite.addTest(
-        unittest.defaultTestLoader.loadTestsFromTestCase(TestEventDataStructure)
-        # unittest.defaultTestLoader.loadTestsFromTestCase(TestEvent)
+        # unittest.defaultTestLoader.loadTestsFromTestCase(TestEventDataStructure)
+        unittest.defaultTestLoader.loadTestsFromTestCase(TestEvent)
     )
     return testsuite
 
