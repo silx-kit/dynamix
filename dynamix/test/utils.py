@@ -73,7 +73,7 @@ dataset_eiger_20k = DatasetDescription(
     bins=None,
 )
 
-dataset_al_600 =DatasetDescription(
+dataset_al_600 = DatasetDescription(
     name="Al_512_600",
     data="Al_600.npz",
     result="unknown.npz",
@@ -85,7 +85,7 @@ dataset_al_600 =DatasetDescription(
     frame_shape=(512, 512),
     dtype=np.uint32,
     bins=None,
-) 
+)
 
 def get_datasets():
     datasets = [dataset_andor_10k, dataset_andor_3k, dataset_eiger_10k, dataset_eiger_20k, dataset_al_600]

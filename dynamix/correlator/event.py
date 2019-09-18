@@ -8,6 +8,9 @@ class EventCorrelator(OpenclCorrelator):
 
     kernel_files = ["evtcorrelator.cl"]
 
+    """
+    A class to compute the correlation function for sparse XPCS data.
+    """
 
     def __init__(
         self, shape, nframes,
@@ -158,55 +161,48 @@ class EventCorrelator(OpenclCorrelator):
 
 
 
-
-
-"""
-Let `frames` be a stack of `Nt` frames, each of them having `Nx * Ny` pixels.
-
-At each location `(x, y)` in the frame space, we can extract a 1D array
-of `Nt` elements (i.e `frames[:, y, x]`).
-In this array, many elements will be zero, so it is not useful to store them.
-
-The non-zero elements are compacted, along with their "time" index
-in the original frames volume (i.e their indices along axis 0 in the volume space).
-Schematically:
-[0 0 ...     0   p1  0 ...  0   p2 0 ... 0 p3 0 ...] # pixels values
-[0 1 ... (i1-1)  i1 .... (i2-1) i2 0 ... 0 i3 0 ...] # indices values
-gives once compacted:
-[p1 p2 p3 ...] # (nonzero) pixel values
-[i1 i2 i3 ...] # corresponding "time" locations
-
-This is done for each pixel location (x, y). Therefore, for each pixel in the
-frame space (there are Nx*Ny such pixels), we build two arrays E(x, y) and T(x, y)
-containing respectively the compacted non-zero elements, and their time indices.
-
- -----------
-|      []   |  at location (x, y)   --> (E(x, y), T(x, y)) = ([p1, p2, ...], [t1, t2, ...])
-|           |
-|           |
- -----------
-
-[ E(0, 0) | E(0, 1) | ... | E(x, y) | ... | E(Ny-1, Nx-1) ] # concatenated nonzero data values
-[ T(0, 0) | T(0, 1) | ... | T(x, y) | ... | T(Ny-1, Nx-1) ] # concatenated corresponding time indices
-
-In order to access the correct arrays E(x, y) and T(x, y) given a coordinate (x, y),
-we need some mapping. This is done by building an "offset" array "L":
-
-[L0 = 0   | L1      | ... | L(x, y) | ... ] # offsets
-[ E(0, 0) | E(0, 1) | ... | E(x, y) | ... | E(Ny-1, Nx-1) ] # concatenated nonzero data values
-
-The offset to access E(0, 0) is 0.
-The offset to access E(0, 1) is 0 + <number of non-zero pixels in E(0 0)>,
-and so on.
-
-
-"""
-
-
-
 class FramesCompressor(object):
     """
     A class for compressing frames on-the-fly.
+
+    It builds the data structure used by EventCorrelator, which is explained below.
+
+    Let `frames` be a stack of `Nt` frames, each of them having `Nx * Ny` pixels.
+    At each location `(x, y)` in the frame space, we can extract a 1D array
+    of `Nt` elements (i.e `frames[:, y, x]`).
+    In this array, many elements will be zero, so it is not useful to store them.
+
+    The non-zero elements are compacted, along with their "time" index
+    in the original frames volume (i.e their indices along axis 0 in the volume space).
+    Schematically:
+    [0 0 ...     0   p1  0 ...  0   p2 0 ... 0 p3 0 ...] # pixels values
+    [0 1 ... (i1-1)  i1 .... (i2-1) i2 0 ... 0 i3 0 ...] # indices values
+    gives once compacted:
+    [p1 p2 p3 ...] # (nonzero) pixel values
+    [i1 i2 i3 ...] # corresponding "time" locations
+
+    This is done for each pixel location (x, y). Therefore, for each pixel in the
+    frame space (there are Nx*Ny such pixels), we build two arrays E(x, y) and T(x, y)
+    containing respectively the compacted non-zero elements, and their time indices.
+
+    -----------
+    |      []   |  at location (x, y)   --> (E(x, y), T(x, y)) = ([p1, p2, ...], [t1, t2, ...])
+    |           |
+    |           |
+    -----------
+
+    [ E(0, 0) | E(0, 1) | ... | E(x, y) | ... | E(Ny-1, Nx-1) ] # concatenated nonzero data values
+    [ T(0, 0) | T(0, 1) | ... | T(x, y) | ... | T(Ny-1, Nx-1) ] # concatenated corresponding time indices
+
+    In order to access the correct arrays E(x, y) and T(x, y) given a coordinate (x, y),
+    we need some mapping. This is done by building an "offset" array "L":
+
+    [L0 = 0   | L1      | ... | L(x, y) | ... ] # offsets
+    [ E(0, 0) | E(0, 1) | ... | E(x, y) | ... | E(Ny-1, Nx-1) ] # concatenated nonzero data values
+
+    The offset to access E(0, 0) is 0.
+    The offset to access E(0, 1) is 0 + <number of non-zero pixels in E(0 0)>,
+    and so on.
     """
 
     def __init__(self, shape, nframes, max_nnz, dtype=np.int8):
