@@ -1,13 +1,14 @@
 import numpy as np
 import pyopencl.array as parray
 from multiprocessing import cpu_count
-from ..utils import nextpow2, get_opencl_srcfile
+from ..utils import nextpow2, updiv, get_opencl_srcfile
 from .common import OpenclCorrelator, BaseCorrelator
 
 from silx.math.fft.fftw import FFTW
 try:
     from silx.math.fft.cufft import CUFFT
     import pycuda.gpuarray as garray
+    from pycuda.compiler import SourceModule
 except ImportError:
     CUFFT = None
 try:
@@ -67,7 +68,7 @@ class MatMulCorrelator(BaseCorrelator):
         super()._set_parameters(shape, nframes, qmask, scale_factor, extra_options)
 
 
-    def correlate(frames):
+    def correlate(self, frames):
         res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
         for i, bin_value in enumerate(self.bins):
             mask = (self.qmask == bin_value)
@@ -104,26 +105,84 @@ class CublasMatMulCorrelator(MatMulCorrelator):
             qmask=qmask, scale_factor=scale_factor, extra_options=extra_options
         )
         self._init_cublas()
+        self._compile_kernels()
+
 
     def _init_cublas(self):
-        self._own_cublas_handle = False
+        import pycuda.autoinit
         if "cublas_handle" in self.extra_options:
             handle = self.extra_options["cublas_handle"]
         else:
-            handle = skmisc._global_cublas_handle()
+            handle = skmisc._global_cublas_handle
             if handle is None:
-                # alternative: cublas.init() (create a global handle)
-                handle = cublas.cublas.cublasCreate()
-                self._own_cublas_handle = True
+                cublas.init() # cublas handle + allocator
+                handle = skmisc._global_cublas_handle
         self.cublas_handle = handle
 
 
-    def __del__(self):
-        if self._own_cublas_handle:
-            cublas.cublas.cublasDestroy(self.cublas_handle)
+    def _compile_kernels(self):
+        mod = SourceModule(
+            """
+            // Extract the upper diagonals of a square (N, N) matrix.
+            __global__ void extract_upper_diags(float* matrix, float* diags, int N) {
+                int x = blockDim.x * blockIdx.x + threadIdx.x;
+                int y = blockDim.y * blockIdx.y + threadIdx.y;
+                if ((x >= N) || (y >= N) || (y > x)) return;
+                int pos = y*N+x;
+                int my_diag = x-y;
+                diags[my_diag * N + x] = matrix[pos];
+            }
+            """
+        )
+        self.extract_diags_kernel = mod.get_function("extract_upper_diags")
+        self._blocks = (32, 32, 1)
+        self._grid = (
+            updiv(self.nframes, self._blocks[0]),
+            updiv(self.nframes, self._blocks[1]),
+            1
+        )
+        self.d_diags = garray.zeros((self.nframes, self.nframes), dtype=np.float32)
+        self.d_sumdiags1 = garray.zeros(self.nframes, dtype=np.float32)
+        self.d_sumdiags2 = garray.zeros_like(self.d_sumdiags1)
+        self._kern_args = [
+            None,
+            self.d_diags,
+            np.int32(self.nframes),
+        ]
 
 
+    def sum_diagonals(self, d_arr, d_out):
+        self.d_diags.fill(0)
+        self._kern_args[0] = d_arr.gpudata
+        self.extract_diags_kernel(*self._kern_args, grid=self._grid, block=self._blocks)
+        skmisc.sum(self.d_diags, axis=1, out=d_out)
 
+
+    def _correlate_matmul_cublas(self, frames_flat, mask):
+        arr = np.ascontiguousarray(frames_flat[:, mask], dtype=np.float32)
+        npix = arr.shape[1]
+        # Pre-allocating memory for all bins might save a bit of time,
+        # but would take more memory
+        d_arr = garray.to_gpu(arr)
+        d_outer = cublas.dot(d_arr, d_arr, transb="T", handle=self.cublas_handle)
+        d_means = skmisc.mean(d_arr, axis=1, keepdims=True)
+        d_denom_mat = cublas.dot(d_means, d_means, transb="T", handle=self.cublas_handle)
+
+        self.sum_diagonals(d_outer, self.d_sumdiags1)
+        self.sum_diagonals(d_denom_mat, self.d_sumdiags2)
+        self.d_sumdiags1 /= self.d_sumdiags2
+        self.d_sumdiags1 /= npix
+
+        return self.d_sumdiags1.get()
+
+    def correlate(self, frames):
+        res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+        frames_flat = frames.reshape((self.nframes, -1))
+
+        for i, bin_val in enumerate(self.bins):
+            mask = (self.qmask.ravel() == bin_val)
+            res[i] = self._correlate_matmul_cublas(frames_flat, mask)
+        return res
 
 
 

@@ -17,6 +17,11 @@ def nextpow2(n):
         p *= 2
     return p
 
+def updiv(a, b):
+    """
+    return the integer division, plus one if `a` is not a multiple of `b`
+    """
+    return (a + (b - 1)) // b
 
 def estimate_r2c_memory(fft_shape):
     """
