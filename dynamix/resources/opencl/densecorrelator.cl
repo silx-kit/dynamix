@@ -6,7 +6,6 @@
 kernel void correlator_multiQ_dense(
     const global char* frames,
     const global int* q_mask,
-    const global float* norm_mask,
     const global float* normalization,
     global float* output,
     int image_height,

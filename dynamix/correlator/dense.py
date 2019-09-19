@@ -254,6 +254,11 @@ class DenseCorrelator(OpenclCorrelator):
             self.output_shape,
             self.output_dtype,
         )
+        self.d_output = parray.zeros(
+            self.queue,
+            (self.n_bins, self.nframes),
+            np.float32
+        )
 
 
     def _normalize_sums(self):
@@ -280,7 +285,6 @@ class DenseCorrelator(OpenclCorrelator):
             self.wg,
             self.d_frames.data,
             self.d_qmask.data,
-            self.d_norm_mask.data,
             self.d_sums_f.data,
             self.d_output.data,
             np.int32(self.shape[0]),

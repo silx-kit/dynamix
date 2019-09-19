@@ -94,7 +94,7 @@ class TestDense(unittest.TestCase):
                 "%s: something wrong in bin index %d" % (method_name, bin_idx)
             )
 
-    def notused_test_dense_correlator(self):
+    def test_dense_correlator(self):
         self.correlator = DenseCorrelator(
             self.shape,
             self.nframes,
