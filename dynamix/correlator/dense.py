@@ -22,8 +22,6 @@ try:
 except ImportError:
     pyfftw = None
 
-from collections import namedtuple
-FFTwPlan = namedtuple("FFTwPlan", "fft ifft data_direct data_reciprocal")
 NCPU = cpu_count()
 
 
@@ -73,116 +71,6 @@ class MatMulCorrelator(BaseCorrelator):
             mask = (self.qmask == bin_value)
             res[i] = py_dense_correlator(frames, mask)
         return res
-
-
-class CublasMatMulCorrelator(MatMulCorrelator):
-
-    """
-    The CublasMatMulCorrelator is a CUDA-accelerated version of MatMulCorrelator.
-    """
-
-    def __init__(self, shape, nframes,
-                 qmask=None,
-                 scale_factor=None,
-                 extra_options={}):
-
-        """
-        Initialize a CUBLAS matrix multiplication correlator.
-        Please refer to the documentation of BaseCorrelator for the documentation
-        of each parameters.
-
-        Extra options
-        --------------
-        cublas_handle: int
-            If provided, use this cublas handle instead of creating a new one.
-        """
-        if cublas is None:
-            raise ImportError("scikit-cuda is needed to use this correlator")
-
-        super().__init__(
-            shape, nframes,
-            qmask=qmask, scale_factor=scale_factor, extra_options=extra_options
-        )
-        self._init_cublas()
-        self._compile_kernels()
-
-
-    def _init_cublas(self):
-        import pycuda.autoinit
-        if "cublas_handle" in self.extra_options:
-            handle = self.extra_options["cublas_handle"]
-        else:
-            handle = skmisc._global_cublas_handle
-            if handle is None:
-                cublas.init() # cublas handle + allocator
-                handle = skmisc._global_cublas_handle
-        self.cublas_handle = handle
-
-
-    def _compile_kernels(self):
-        mod = SourceModule(
-            """
-            // Extract the upper diagonals of a square (N, N) matrix.
-            __global__ void extract_upper_diags(float* matrix, float* diags, int N) {
-                int x = blockDim.x * blockIdx.x + threadIdx.x;
-                int y = blockDim.y * blockIdx.y + threadIdx.y;
-                if ((x >= N) || (y >= N) || (y > x)) return;
-                int pos = y*N+x;
-                int my_diag = x-y;
-                diags[my_diag * N + x] = matrix[pos];
-            }
-            """
-        )
-        self.extract_diags_kernel = mod.get_function("extract_upper_diags")
-        self._blocks = (32, 32, 1)
-        self._grid = (
-            updiv(self.nframes, self._blocks[0]),
-            updiv(self.nframes, self._blocks[1]),
-            1
-        )
-        self.d_diags = garray.zeros((self.nframes, self.nframes), dtype=np.float32)
-        self.d_sumdiags1 = garray.zeros(self.nframes, dtype=np.float32)
-        self.d_sumdiags2 = garray.zeros_like(self.d_sumdiags1)
-        self._kern_args = [
-            None,
-            self.d_diags,
-            np.int32(self.nframes),
-        ]
-
-
-    def sum_diagonals(self, d_arr, d_out):
-        self.d_diags.fill(0)
-        self._kern_args[0] = d_arr.gpudata
-        self.extract_diags_kernel(*self._kern_args, grid=self._grid, block=self._blocks)
-        skmisc.sum(self.d_diags, axis=1, out=d_out)
-
-
-    def _correlate_matmul_cublas(self, frames_flat, mask):
-        arr = np.ascontiguousarray(frames_flat[:, mask], dtype=np.float32)
-        npix = arr.shape[1]
-        # Pre-allocating memory for all bins might save a bit of time,
-        # but would take more memory
-        d_arr = garray.to_gpu(arr)
-        d_outer = cublas.dot(d_arr, d_arr, transb="T", handle=self.cublas_handle)
-        d_means = skmisc.mean(d_arr, axis=1, keepdims=True)
-        d_denom_mat = cublas.dot(d_means, d_means, transb="T", handle=self.cublas_handle)
-
-        self.sum_diagonals(d_outer, self.d_sumdiags1)
-        self.sum_diagonals(d_denom_mat, self.d_sumdiags2)
-        self.d_sumdiags1 /= self.d_sumdiags2
-        self.d_sumdiags1 /= npix
-
-        return self.d_sumdiags1.get()
-
-    def correlate(self, frames):
-        res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
-        frames_flat = frames.reshape((self.nframes, -1))
-
-        for i, bin_val in enumerate(self.bins):
-            mask = (self.qmask.ravel() == bin_val)
-            res[i] = self._correlate_matmul_cublas(frames_flat, mask)
-        return res
-
 
 
 
@@ -341,7 +229,7 @@ class FFTCorrelator(BaseCorrelator):
 
     def _init_fft_plans(self, precompute_fft_plans):
         self.precompute_fft_plans = precompute_fft_plans
-        self.Nf = get_next_power(2 * self.nframes)
+        self.Nf = int(get_next_power(2 * self.nframes))
         self.n_pix = {}
         for bin_val in self.bins:
             mask = (self.qmask == bin_val)
@@ -389,7 +277,7 @@ class FFTWCorrelator(FFTCorrelator):
         super().__init__(
             shape, nframes, qmask=qmask,
             weights=weights, scale_factor=scale_factor,
-            precompute_fft_plans=precompute_fft_plans,  extra_options=extra_options
+            precompute_fft_plans=precompute_fft_plans, extra_options=extra_options
         )
         if pyfftw is None:
             raise ImportError("pyfftw needs to be installed")
@@ -414,7 +302,8 @@ class FFTWCorrelator(FFTCorrelator):
         fftw_plan.data_in[:, :self.nframes] = frames_flat.T[:, ::-1]
 
         f_out2 = fftw_plan.fft(None, output=f_out2)
-        num = fftw_plan.ifft(f_out1 * f_out2)
+        f_out1 *= f_out2
+        num = fftw_plan.ifft(f_out1)
 
         num = num.sum(axis=0)[self.nframes-1:self.nframes-1 + self.nframes]
         sums = frames_flat.sum(axis=1)
@@ -441,5 +330,4 @@ def import_wisdom(basedir):
         with open(fname, "rb") as fid:
             w.append(fid.read())
     pyfftw.import_wisdom(w)
-
 

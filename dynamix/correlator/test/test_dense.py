@@ -36,7 +36,8 @@ import logging
 import unittest
 import numpy as np
 from dynamix.test.utils import XPCSDataset
-from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator, CublasMatMulCorrelator
+from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator
+from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
