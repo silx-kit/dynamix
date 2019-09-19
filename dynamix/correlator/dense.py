@@ -1,7 +1,8 @@
 import numpy as np
 import pyopencl.array as parray
+from os import path
 from multiprocessing import cpu_count
-from ..utils import nextpow2, updiv, get_opencl_srcfile
+from ..utils import nextpow2, updiv, get_opencl_srcfile, get_next_power
 from .common import OpenclCorrelator, BaseCorrelator
 
 from silx.math.fft.fftw import FFTW
@@ -16,8 +17,6 @@ try:
     import skcuda.misc as skmisc
 except ImportError:
     cublas = None
-
-
 try:
     import pyfftw
 except ImportError:
@@ -326,276 +325,121 @@ class DenseCorrelator(OpenclCorrelator):
 
 
 
-class DenseFFTwCorrelator(BaseCorrelator):
-    """
-    Not an OpenCL correlator, as we are not using OpenCL.
 
-    Based on FFTw
-    """
 
+
+class FFTCorrelator(BaseCorrelator):
     def __init__(self, shape, nframes,
                  qmask=None,
                  weights=None,
                  scale_factor=None,
                  precompute_fft_plans=False,
                  extra_options={}):
-        BaseCorrelator.__init__(self)
+        super().__init__()
+        super()._set_parameters(shape, nframes, qmask, scale_factor, extra_options)
+        self._init_fft_plans(precompute_fft_plans)
+
+    def _init_fft_plans(self, precompute_fft_plans):
+        self.precompute_fft_plans = precompute_fft_plans
+        self.Nf = get_next_power(2 * self.nframes)
+        self.n_pix = {}
+        for bin_val in self.bins:
+            mask = (self.qmask == bin_val)
+            self.n_pix[bin_val] = mask.sum()
+
+        self.fft_plans = {}
+        for bin_val, npix in self.n_pix.items():
+            if precompute_fft_plans:
+                self.fft_plans[bin_val] = self._create_fft_plan(npix)
+            else:
+                self.fft_plans[bin_val] = None
+
+    def _create_fft_plan(self, npix):
+        raise NotImplementedError("This must be implemented by child class")
+
+    def _get_plan(self, bin_val):
+        fft_plan = self.fft_plans[bin_val]
+        if fft_plan is None:
+            fft_plan = self._create_fft_plan(self.n_pix[bin_val])
+        return fft_plan
+
+    def _correlate_fft(self, frames_flat, fftw_plan):
+        raise NotImplementedError("This must be implemented by child class")
+
+    def correlate(self, frames):
+        res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+        frames_flat = frames.reshape((self.nframes, -1))
+        for i, bin_val in enumerate(self.bins):
+            mask = (self.qmask == bin_val).ravel()
+            frames_flat_currbin = frames_flat[:, mask]
+            fft_plan = self._get_plan(bin_val)
+            res[i] = self._correlate_fft(frames_flat_currbin, fft_plan)
+        return res
+
+
+
+
+class FFTWCorrelator(FFTCorrelator):
+    def __init__(self, shape, nframes,
+                 qmask=None,
+                 weights=None,
+                 scale_factor=None,
+                 precompute_fft_plans=False,
+                 extra_options={}):
+        super().__init__(
+            shape, nframes, qmask=qmask,
+            weights=weights, scale_factor=scale_factor,
+            precompute_fft_plans=precompute_fft_plans,  extra_options=extra_options
+        )
         if pyfftw is None:
             raise ImportError("pyfftw needs to be installed")
-        BaseCorrelator._set_parameters(self, shape, nframes, qmask, scale_factor, extra_options)
-        self._init_fft_plans(precompute_fft_plans)
 
-    def _configure_extra_options(self, extra_options):
-        BaseCorrelator._configure_extra_options(self, extra_options)
-        self.extra_options["save_fft_plans"] =  True
+    def _create_fft_plan(self, npix):
+        return FFTW(
+            shape=(npix, self.Nf), dtype=np.float32,
+            num_threads=NCPU, axes=(-1,)
+        )
 
-    def _init_fft_plans(self, precompute_fft_plans):
-        """
-        Create one couple of (FFT, IFFT) plans for each bin value
-        """
-        self.precompute_fft_plans = precompute_fft_plans
-        self.fft_sizes = {}
-        self.ffts = {}
-        bins = self.bins if self.bins is not None else [0]
-        for bin_val in bins:
-            if bin_val == 0:
-                n_mask_pixels = np.prod(self.shape)
-            else:
-                n_mask_pixels = (self.qmask == bin_val).sum()
-            fft_size = int(nextpow2(2 * self.nframes * int(n_mask_pixels)))
-            self.fft_sizes[bin_val] = fft_size
+    def _correlate_fft(self, frames_flat, fftw_plan):
+        npix = frames_flat.shape[1]
 
-            if precompute_fft_plans:
-                self.ffts[bin_val] = self.get_plan(bin_val)
-            else:
-                self.ffts[bin_val] = None
+        fftw_plan.data_in.fill(0)
+        f_out1 = fftw_plan.data_out
+        f_out2 = np.zeros_like(fftw_plan.data_out)
 
-    @staticmethod
-    def _compute_denom_means(frames):
-        # frames: (n_frames, n_pix), float32
-        # Do it on GPU ? Cumbersome, and not sure if the perf gain is worth it
-        return frames.mean(axis=1)
+        fftw_plan.data_in[:, :self.nframes] = frames_flat.T
 
-    def get_plan(self, bin_val):
-        """
-        Get the FFT plan associated with a bin value.
-        """
-        N = self.fft_sizes[bin_val]
-        fft = self.ffts.get(bin_val)
-        if fft is None: # plan is not precomputed - it is time to compute it
-            data_direct =  pyfftw.empty_aligned(N, 'complex64')
-            data_rec = pyfftw.empty_aligned(N, 'complex64')
-            fft = FFTwPlan(pyfftw.FFTW(data_direct, data_rec, direction='FFTW_FORWARD', threads=NCPU,  flags=["FFTW_ESTIMATE"]),
-                           pyfftw.FFTW(data_rec, data_direct, direction='FFTW_BACKWARD', threads=NCPU,  flags=["FFTW_ESTIMATE"]),
-                           data_direct, data_rec)
+        f_out1 = fftw_plan.fft(None, output=f_out1)
+        fftw_plan.data_in.fill(0)
+        fftw_plan.data_in[:, :self.nframes] = frames_flat.T[:, ::-1]
 
-            if self.extra_options.get("save_fft_plans"):
-                self.ffts[bin_val] = fft
-        return fft
+        f_out2 = fftw_plan.fft(None, output=f_out2)
+        num = fftw_plan.ifft(f_out1 * f_out2)
 
-    def flush_plans(self, bin_val=None):
-        """
-        Clear stored FFT plans in order to free some memory.
-        """
-        bins = [bin_val] if bin_val is not None else list(self.ffts.keys())
-        for binval in bins:
-            self.ffts[binval] = None
+        num = num.sum(axis=0)[self.nframes-1:self.nframes-1 + self.nframes]
+        sums = frames_flat.sum(axis=1)
+        denom = np.correlate(sums, sums, "full")[sums.size-1:] / npix
 
-
-    def _correlate_1d(self, frames, bin_val=0):
-        # frames: (n_frames, n_pix), float32
-        fft = self.get_plan(bin_val)
-
-        fft.data_direct[:frames.size] = np.ascontiguousarray(frames.ravel()[:], dtype="complex64")
-        fft.fft()
-        out1 = np.copy(fft.data_reciprocal)
-        fft.data_direct[:frames.size] = np.ascontiguousarray(frames.ravel()[::-1], dtype="complex64")
-        fft.fft()
-        out2 = np.copy(fft.data_reciprocal)
-        fft.data_reciprocal[...] = out1 * out2
-        res = np.ascontiguousarray(fft.ifft().real, dtype="float32")
-
-        numerator = res[:frames.size].reshape((self.nframes, -1))[:, -1][::-1]
-        sums = self._compute_denom_means(frames)
-        denominator = np.correlate(sums, sums, "full")[sums.size-1:] # with fft and/or gpu ?
-
-        return numerator/denominator/self.scale_factors[bin_val]
-
-    def get_pixels_in_bin(self, frames, bin_val, check=True, convert_to_float=True):
-        """
-        From a stack of frames, extract the pixels belonging to a given bin.
-        The result is a 2D array of size (nframes, npixels) where npixels
-        is the number of pixels falling in the given bin.
-
-        Parameters
-        -----------
-        frames: numpy.ndarray
-            Stack of frames in the format (nframes, nrows, ncolumns)
-        bin_val: int
-            Value of the current bin
-        check: bool, optional
-            Whether to check if the stack of frames is valid with the current instance.
-        convert_to_float: bool, optional
-            Whether to convert the result in float32.
-        """
-        if check:
-            if bin_val > 0:
-                assert bin_val in self.bins
-            assert frames.ndim == 3
-            assert frames.shape[0] == self.nframes
-            assert frames[0].shape == self.shape
-            # assert frames.dtype == self.dtype # should not be relevant here
-        if bin_val == 0: # no qmask
-            res = frames.reshape((frames.shape[0], -1))
-        else:
-            mask = (self.qmask == bin_val)
-            res = frames.reshape((frames.shape[0], -1))[:, mask.ravel()]
-        if convert_to_float:
-            res = np.ascontiguousarray(res, dtype=np.float32)
+        res = num/denom
         return res
 
-    def correlate(self, frames):
-        bins = [0] if self.bins is None else self.bins
-        results = np.zeros((len(bins), self.nframes), dtype="f")
-        for i, bin_val in enumerate(bins):
-            arr = self.get_pixels_in_bin(frames, bin_val)
-            results[i] = self._correlate_1d(arr, bin_val=bin_val)
-        return results
 
 
+def export_wisdom(basedir):
+    w = pyfftw.export_wisdom()
+    for i in range(len(w)):
+        fname = path.join(basedir, "wis%d.dat" % i)
+        with open(fname, "wb") as fid:
+            fid.write(w[i])
 
-class DenseCuFFTCorrelator(BaseCorrelator):
-    """
-    Not an OpenCL correlator, as we are not using OpenCL.
-    CLFFT does not support 1D FFT of too big arrays for some reason.
-    """
-
-    def __init__(self, shape, nframes,
-                 qmask=None,
-                 weights=None,
-                 scale_factor=None,
-                 precompute_fft_plans=False,
-                 extra_options={}):
-        BaseCorrelator.__init__(self)
-        if CUFFT is None:
-            raise ImportError("pycuda and scikit-cuda need to be installed")
-        BaseCorrelator._set_parameters(self, shape, nframes, qmask, scale_factor, extra_options)
-        self._init_fft_plans(precompute_fft_plans)
-
-    def _configure_extra_options(self, extra_options):
-        BaseCorrelator._configure_extra_options(self, extra_options)
-        self.extra_options["save_fft_plans"] =  True
-
-    def _init_fft_plans(self, precompute_fft_plans):
-        """
-        Create one couple of (FFT, IFFT) plans for each bin value
-        """
-        self.precompute_fft_plans = precompute_fft_plans
-        self.fft_sizes = {} # key: size, value: next power of two
-        self.ffts = {}
-        bins = self.bins if self.bins is not None else [0]
-        for bin_val in bins:
-            if bin_val == 0:
-                n_mask_pixels = np.prod(self.shape)
-            else:
-                n_mask_pixels = (self.qmask == bin_val).sum()
-            fft_size = int(nextpow2(2 * self.nframes * int(n_mask_pixels)))
-            self.fft_sizes[bin_val] = fft_size
-            self.ffts[bin_val] = None
-            if precompute_fft_plans:
-                self.get_plan(bin_val)
-
-    @staticmethod
-    def _compute_denom_means(frames):
-        # frames: (n_frames, n_pix), float32
-        # Do it on GPU ? Cumbersome, and not sure if the perf gain is worth it
-        return frames.mean(axis=1)
-
-    def get_plan(self, bin_val):
-        """
-        Get the FFT plan associated with a bin value.
-        """
-        N = self.fft_sizes[bin_val]
-        fft = self.ffts.get(bin_val)
-        if fft is None: # plan is not precomputed - it is time to compute it
-            fft = CUFFT(template=np.zeros(N, dtype=np.float32))
-            if self.extra_options.get("save_fft_plans"):
-                self.ffts[bin_val] = fft
-        else:
-            fft.data_in.fill(0)
-            fft.data_out.fill(0)
-        return fft
-
-    def flush_plans(self, bin_val=None):
-        """
-        Clear stored FFT plans in order to free some GPU memory.
-        """
-        bins = [bin_val] if bin_val is not None else list(self.fft_sizes.keys())
-        for binval in bins:
-            self.ffts[binval] = None
+def import_wisdom(basedir):
+    w = []
+    for i in range(3): # always 3 ?
+        fname = path.join(basedir, "wis%d.dat" % i)
+        if not(path.isfile(fname)):
+            raise RuntimeError("Could find wisdom file %s" % fname)
+        with open(fname, "rb") as fid:
+            w.append(fid.read())
+    pyfftw.import_wisdom(w)
 
 
-    def _correlate_1d(self, frames, bin_val=0):
-        # frames: (n_frames, n_pix), float32
-        fft = self.get_plan(bin_val)
-
-        fft.data_in[:frames.size] = frames.ravel()[:]
-
-        d_out1 = fft.data_out
-        d_out2 = garray.zeros_like(fft.data_out) # pre-allocate ?
-        fft.fft(fft.data_in, output=d_out1)
-        fft.data_in[:frames.size] = np.ascontiguousarray(frames.ravel()[::-1])
-        fft.fft(fft.data_in, output=d_out2)
-
-        d_out1 *= d_out2
-        fft.ifft(d_out1, output=fft.data_in)
-        res = fft.data_in.get()
-
-        numerator = res[:frames.size].reshape((self.nframes, -1))[:, -1][::-1]
-        sums = self._compute_denom_means(frames)
-        denominator = np.correlate(sums, sums, "full")[sums.size-1:] # with fft and/or gpu ?
-
-        return numerator/denominator/self.scale_factors[bin_val]
-
-    def get_pixels_in_bin(self, frames, bin_val, check=True, convert_to_float=True):
-        """
-        From a stack of frames, extract the pixels belonging to a given bin.
-        The result is a 2D array of size (nframes, npixels) where npixels
-        is the number of pixels falling in the given bin.
-
-        Parameters
-        -----------
-        frames: numpy.ndarray
-            Stack of frames in the format (nframes, nrows, ncolumns)
-        bin_val: int
-            Value of the current bin
-        check: bool, optional
-            Whether to check if the stack of frames is valid with the current instance.
-        convert_to_float: bool, optional
-            Whether to convert the result in float32.
-        """
-        if check:
-            if bin_val > 0:
-                assert bin_val in self.bins
-            assert frames.ndim == 3
-            assert frames.shape[0] == self.nframes
-            assert frames[0].shape == self.shape
-            # assert frames.dtype == self.dtype # should not be relevant here
-        if bin_val == 0: # no qmask
-            res = frames.reshape((frames.shape[0], -1))
-        else:
-            mask = (self.qmask == bin_val)
-            res = frames.reshape((frames.shape[0], -1))[:, mask.ravel()]
-        if convert_to_float:
-            res = np.ascontiguousarray(res, dtype=np.float32)
-        return res
-
-    def correlate(self, frames):
-        bins = [0] if self.bins is None else self.bins
-        results = np.zeros((len(bins), self.nframes), dtype="f")
-        for i, bin_val in enumerate(bins):
-            arr = self.get_pixels_in_bin(frames, bin_val)
-            results[i] = self._correlate_1d(arr, bin_val=bin_val)
-        return results
-
-DenseFFTCorrelator = DenseFFTwCorrelator
