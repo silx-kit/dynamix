@@ -1,13 +1,21 @@
 import numpy as np
 import pyopencl.array as parray
+from multiprocessing import cpu_count
 from ..utils import nextpow2, get_opencl_srcfile
 from .common import OpenclCorrelator, BaseCorrelator
-import multiprocessing
+
+from silx.math.fft.fftw import FFTW
 try:
     from silx.math.fft.cufft import CUFFT
     import pycuda.gpuarray as garray
 except ImportError:
     CUFFT = None
+try:
+    import skcuda.linalg as cublas
+    import skcuda.misc as skmisc
+except ImportError:
+    cublas = None
+
 
 try:
     import pyfftw
@@ -16,7 +24,110 @@ except ImportError:
 
 from collections import namedtuple
 FFTwPlan = namedtuple("FFTwPlan", "fft ifft data_direct data_reciprocal")
-NCPU = multiprocessing.cpu_count()
+NCPU = cpu_count()
+
+
+def py_dense_correlator(xpcs_data, mask):
+    """
+    Reference implementation of the dense correlator.
+
+    Parameters
+    -----------
+    xpcs_data: numpy.ndarray
+        Stack of XPCS frames with shape (n_frames, n_rows, n_columns)
+    mask: numpy.ndarray
+        Mask of bins in the format (n_rows, n_columns).
+        Zero pixels indicate unused pixels.
+    """
+    ind = np.where(mask > 0) # unused pixels are 0
+    xpcs_data = np.array(xpcs_data[:, ind[0], ind[1]], np.float32) # (n_tau, n_pix)
+    meanmatr = np.mean(xpcs_data, axis=1) # xpcs_data.sum(axis=-1).sum(axis=-1)/n_pix
+    ltimes, lenmatr = np.shape(xpcs_data) # n_tau, n_pix
+    meanmatr.shape = 1, ltimes
+
+    num = np.dot(xpcs_data, xpcs_data.T)
+    denom = np.dot(meanmatr.T, meanmatr)
+
+    res = np.zeros(ltimes) # was ones()
+    for i in range(ltimes): # was ltimes-1, so res[-1] was always 1 !
+        dia_n = np.diag(num, k=i)
+        dia_d = np.diag(denom, k=i)
+        res[i] = np.sum(dia_n)/np.sum(dia_d) / lenmatr
+    return res
+
+
+class MatMulCorrelator(BaseCorrelator):
+
+    def __init__(self, shape, nframes,
+                 qmask=None,
+                 scale_factor=None,
+                 extra_options={}):
+
+        super().__init__()
+        super()._set_parameters(shape, nframes, qmask, scale_factor, extra_options)
+
+
+    def correlate(frames):
+        res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+        for i, bin_value in enumerate(self.bins):
+            mask = (self.qmask == bin_value)
+            res[i] = py_dense_correlator(frames, mask)
+        return res
+
+
+class CublasMatMulCorrelator(MatMulCorrelator):
+
+    """
+    The CublasMatMulCorrelator is a CUDA-accelerated version of MatMulCorrelator.
+    """
+
+    def __init__(self, shape, nframes,
+                 qmask=None,
+                 scale_factor=None,
+                 extra_options={}):
+
+        """
+        Initialize a CUBLAS matrix multiplication correlator.
+        Please refer to the documentation of BaseCorrelator for the documentation
+        of each parameters.
+
+        Extra options
+        --------------
+        cublas_handle: int
+            If provided, use this cublas handle instead of creating a new one.
+        """
+        if cublas is None:
+            raise ImportError("scikit-cuda is needed to use this correlator")
+
+        super().__init__(
+            shape, nframes,
+            qmask=qmask, scale_factor=scale_factor, extra_options=extra_options
+        )
+        self._init_cublas()
+
+    def _init_cublas(self):
+        self._own_cublas_handle = False
+        if "cublas_handle" in self.extra_options:
+            handle = self.extra_options["cublas_handle"]
+        else:
+            handle = skmisc._global_cublas_handle()
+            if handle is None:
+                # alternative: cublas.init() (create a global handle)
+                handle = cublas.cublas.cublasCreate()
+                self._own_cublas_handle = True
+        self.cublas_handle = handle
+
+
+    def __del__(self):
+        if self._own_cublas_handle:
+            cublas.cublas.cublasDestroy(self.cublas_handle)
+
+
+
+
+
+
+
 
 class DenseCorrelator(OpenclCorrelator):
 
@@ -29,7 +140,8 @@ class DenseCorrelator(OpenclCorrelator):
         block_size=None, memory=None, profile=False
     ):
         """
-        TODO docstring
+        Class for OpenCL dense correlator.
+        This correlator is usually slower than all the other correlators.
         """
         super(DenseCorrelator, self).__init__(
             shape, nframes, qmask=qmask, dtype=dtype, weights=weights,
@@ -150,45 +262,18 @@ class DenseCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Corr 1D kernel")
 
 
-def py_dense_correlator(xpcs_data, mask):
-    """
-    Reference/"naive" implementation of the dense correlator.
-
-    Parameters
-    -----------
-    xpcs_data: numpy.ndarray
-        Stack of XPCS frames with shape (n_frames, n_rows, n_columns)
-    mask: numpy.ndarray
-        Mask of bins in the format (n_rows, n_columns).
-        Zero pixels indicate unused pixels.
-    """
-    ind = np.where(mask > 0) # unused pixels are 0
-    xpcs_data = np.array(xpcs_data[:, ind[0], ind[1]], np.float32) # (n_tau, n_pix)
-    meanmatr = np.mean(xpcs_data, axis=1) # xpcs_data.sum(axis=-1).sum(axis=-1)/n_pix
-    ltimes, lenmatr = np.shape(xpcs_data) # n_tau, n_pix
-    meanmatr.shape = 1, ltimes
-
-    num = np.dot(xpcs_data, xpcs_data.T)
-    denom = np.dot(meanmatr.T, meanmatr)
-
-    res = np.zeros(ltimes-1) # was ones()
-    for i in range(1, ltimes): # was ltimes-1, so res[-1] was always 1 !
-        dia_n = np.diag(num, k=i)
-        dia_d = np.diag(denom, k=i)
-        res[i-1] = np.sum(dia_n)/np.sum(dia_d) / lenmatr
-    return res
 
 class DenseFFTwCorrelator(BaseCorrelator):
     """
     Not an OpenCL correlator, as we are not using OpenCL.
-    
+
     Based on FFTw
     """
 
-    def __init__(self, shape, nframes, 
-                 qmask=None, 
-                 weights=None, 
-                 scale_factor=None, 
+    def __init__(self, shape, nframes,
+                 qmask=None,
+                 weights=None,
+                 scale_factor=None,
                  precompute_fft_plans=False,
                  extra_options={}):
         BaseCorrelator.__init__(self)
@@ -216,7 +301,7 @@ class DenseFFTwCorrelator(BaseCorrelator):
                 n_mask_pixels = (self.qmask == bin_val).sum()
             fft_size = int(nextpow2(2 * self.nframes * int(n_mask_pixels)))
             self.fft_sizes[bin_val] = fft_size
-            
+
             if precompute_fft_plans:
                 self.ffts[bin_val] = self.get_plan(bin_val)
             else:
@@ -239,8 +324,8 @@ class DenseFFTwCorrelator(BaseCorrelator):
             data_rec = pyfftw.empty_aligned(N, 'complex64')
             fft = FFTwPlan(pyfftw.FFTW(data_direct, data_rec, direction='FFTW_FORWARD', threads=NCPU,  flags=["FFTW_ESTIMATE"]),
                            pyfftw.FFTW(data_rec, data_direct, direction='FFTW_BACKWARD', threads=NCPU,  flags=["FFTW_ESTIMATE"]),
-                           data_direct, data_rec) 
-            
+                           data_direct, data_rec)
+
             if self.extra_options.get("save_fft_plans"):
                 self.ffts[bin_val] = fft
         return fft
@@ -264,7 +349,7 @@ class DenseFFTwCorrelator(BaseCorrelator):
         fft.data_direct[:frames.size] = np.ascontiguousarray(frames.ravel()[::-1], dtype="complex64")
         fft.fft()
         out2 = np.copy(fft.data_reciprocal)
-        fft.data_reciprocal[...] = out1 * out2 
+        fft.data_reciprocal[...] = out1 * out2
         res = np.ascontiguousarray(fft.ifft().real, dtype="float32")
 
         numerator = res[:frames.size].reshape((self.nframes, -1))[:, -1][::-1]
@@ -322,10 +407,10 @@ class DenseCuFFTCorrelator(BaseCorrelator):
     CLFFT does not support 1D FFT of too big arrays for some reason.
     """
 
-    def __init__(self, shape, nframes, 
-                 qmask=None, 
-                 weights=None, 
-                 scale_factor=None, 
+    def __init__(self, shape, nframes,
+                 qmask=None,
+                 weights=None,
+                 scale_factor=None,
                  precompute_fft_plans=False,
                  extra_options={}):
         BaseCorrelator.__init__(self)
@@ -343,7 +428,7 @@ class DenseCuFFTCorrelator(BaseCorrelator):
         Create one couple of (FFT, IFFT) plans for each bin value
         """
         self.precompute_fft_plans = precompute_fft_plans
-        self.fft_sizes = {} # key: size, value: next power of two 
+        self.fft_sizes = {} # key: size, value: next power of two
         self.ffts = {}
         bins = self.bins if self.bins is not None else [0]
         for bin_val in bins:
@@ -355,7 +440,7 @@ class DenseCuFFTCorrelator(BaseCorrelator):
             self.fft_sizes[bin_val] = fft_size
             self.ffts[bin_val] = None
             if precompute_fft_plans:
-                self.get_plan(bin_val)  
+                self.get_plan(bin_val)
 
     @staticmethod
     def _compute_denom_means(frames):
