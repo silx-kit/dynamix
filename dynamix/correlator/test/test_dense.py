@@ -37,7 +37,7 @@ import unittest
 import numpy as np
 from dynamix.test.utils import XPCSDataset
 from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator
-from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator
+from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator, CUFFT
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -47,6 +47,7 @@ try:
     import pyfftw
 except ImportError:
     pyfftw = None
+
 
 
 class TestDense(unittest.TestCase):
@@ -145,6 +146,25 @@ class TestDense(unittest.TestCase):
         res = self.fftcorrelator.correlate(self.dataset.data)
         logger.info("FFTw dense correlator took %.1f ms" % ((time() - t0)*1e3))
         self.compare(res, "FFTw dense correlator")
+
+
+    def test_cufft_dense_correlator(self):
+        if CUFFT is None:
+            self.skipTest("Need pycuda scikit-cuda")
+        self.fftcorrelator = CUFFTCorrelator(
+            self.shape,
+            self.nframes,
+            qmask=self.dataset.qmask,
+            extra_options={"save_fft_plans": False}
+        )
+        t0 = time()
+        res = self.fftcorrelator.correlate(self.dataset.data)
+        logger.info("CUFFT dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        self.compare(res, "CUFFT dense correlator")
+
+
+
+
 
 
 def suite():

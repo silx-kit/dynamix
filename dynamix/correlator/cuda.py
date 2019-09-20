@@ -140,38 +140,81 @@ class CUFFTCorrelator(FFTCorrelator):
         )
         if CUFFT is None:
             raise ImportError("pycuda and scikit-cuda need to be installed")
-        self.d_sums = garray.zeros(self.Nf, np.float32)
         if skmisc._global_cublas_handle is None:
             cublas.init()
+        self._allocate_cuda_arrays()
+        self._compile_kernels()
 
     def _create_fft_plan(self, npix):
         return CUFFT(shape=(npix, self.Nf), dtype=np.float32,  axes=(-1,))
 
+    def _allocate_cuda_arrays(self):
+        self.d_sums = garray.zeros(self.Nf, np.float32)
+        self.d_numerator = self.d_sums[self.nframes-1:self.nframes-1 + self.nframes] # view
+        self.d_sums_denom_tmp = garray.zeros(self.Nf, np.float32)
+        self.d_denom = garray.zeros(self.nframes, np.float32)
+
+    def _compile_kernels(self):
+        mod = SourceModule(
+            """
+            // 1D correlation of a N samples array
+            __global__ void corr1D(float* arr, float* out, int N, float scale_factor) {
+                int i = blockDim.x * blockIdx.x + threadIdx.x;
+                if (i >= N) return;
+                float s = 0.0f;
+                for (int j = i; j < N; j++) s += arr[j] * arr[j-i];
+                out[i] = s/scale_factor;
+            }
+            """
+        )
+        self.corr1D_kernel = mod.get_function("corr1D")
+        self._blocks = (32, 1, 1) # tune ?
+        self._grid = (updiv(self.nframes, self._blocks[0]), 1, 1)
+
+    def _correlate_denom(self, npix):
+        scale_factor = np.float32(npix)
+        self.corr1D_kernel(
+            self.d_sums_denom_tmp,
+            self.d_denom,
+            np.int32(self.nframes),
+            scale_factor,
+            grid=self._grid, block=self._blocks
+        )
+
+
     def _correlate_fft(self, frames_flat, cufft_plan):
         npix = frames_flat.shape[1]
 
-        cufft_plan.data_in.fill(0)
         d_in = cufft_plan.data_in
+        d_in.fill(0)
         f_out1 = cufft_plan.data_out
         f_out2 = garray.zeros_like(cufft_plan.data_out)
 
-        cufft_plan.data_in[:, :self.nframes] = frames_flat.T.astype("f")
-
+        # fft(pad(frames_flat), axis=1)
+        d_in[:, :self.nframes] = frames_flat.T.astype("f")
         f_out1 = cufft_plan.fft(d_in, output=f_out1)
-        cufft_plan.data_in.fill(0)
-        cufft_plan.data_in[:, :self.nframes] = frames_flat.T[:, ::-1].astype("f")
 
+        # frames_flat.sum(axis=1)
+        # skmisc.sum() only works on base data, not gpuarray views,
+        # so we sum on the whole array and then extract the right subset.
+        skmisc.sum(d_in, axis=0, out=self.d_sums_denom_tmp)
+
+        # fft(pad(frames_flat[::-1]), axis=1)
+        d_in.fill(0)
+        d_in[:, :self.nframes] = frames_flat.T[:, ::-1].astype("f")
         f_out2 = cufft_plan.fft(d_in, output=f_out2)
+
+        # product, ifft
         f_out1 *= f_out2
-        num = cufft_plan.ifft(f_out1, output=cufft_plan.data_in)
+        num = cufft_plan.ifft(f_out1, output=d_in)
+
+        # numerator of g_2
         skmisc.sum(num, axis=0, out=self.d_sums)
 
-        num = self.d_sums.get()[self.nframes-1:self.nframes-1 + self.nframes]
-        # gpu ?
-        sums = frames_flat.sum(axis=1)
-        denom = np.correlate(sums, sums, "full")[sums.size-1:] / npix # TODO GPU, it takes 2/3 of the time
-        #
+        # denominator of g_2: correlate(d_sums_denom)
+        self._correlate_denom(npix)
 
-        res = num/denom
+        self.d_numerator /= self.d_denom
+        res = self.d_numerator.get()
         return res
 
