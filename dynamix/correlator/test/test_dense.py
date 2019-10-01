@@ -36,51 +36,61 @@ import logging
 import unittest
 import numpy as np
 from dynamix.test.utils import XPCSDataset
-from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, CUFFT, DenseCuFFTCorrelator, pyfftw, DenseFFTwCorrelator
+from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator
+from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator, CUFFT
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
+try:
+    import pyfftw
+except ImportError:
+    pyfftw = None
 
-if CUFFT is not None:
-    import pycuda.autoinit # get context
 
 
 class TestDense(unittest.TestCase):
 
     ref = None
 
-    def setUp(self):
+    @classmethod
+    def load_data(cls):
         logger.debug("Loading data")
-        self.dataset = XPCSDataset("eiger_514_10k")
-        logger.setLevel(logging.DEBUG)
-        self.shape = self.dataset.dataset_desc.frame_shape
-        self.nframes = self.dataset.dataset_desc.nframes
+        cls.dataset = XPCSDataset("eiger_514_10k")
+        cls.shape = cls.dataset.dataset_desc.frame_shape
+        cls.nframes = cls.dataset.dataset_desc.nframes
+
+    @classmethod
+    def compute_reference_correlation(cls):
+        if cls.ref is not None:
+            return # dont re-compute ref
+        t0 = time()
+        ref = np.zeros(
+            (cls.dataset.dataset_desc.bins, cls.dataset.dataset_desc.nframes),
+            dtype=np.float32
+        )
+        for bin_val in range(1, cls.dataset.dataset_desc.bins+1):
+            mask = (cls.dataset.qmask == bin_val)
+            ref[bin_val-1] = py_dense_correlator(cls.dataset.data, mask)
+        logger.info("Numpy dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        cls.ref = ref
+
+    @classmethod
+    def setUpClass(cls):
+        cls.load_data()
+        cls.compute_reference_correlation()
+
+    def setUp(self):
         self.tol = 5e-3
-        self.compute_reference_correlation()
+
 
     def tearDown(self):
         pass
 
-    def compute_reference_correlation(self):
-        if self.ref is not None:
-            return # dont re-compute ref
-        t0 = time()
-        ref = np.zeros(
-            (self.dataset.dataset_desc.bins, self.dataset.dataset_desc.nframes -1),
-            dtype=np.float32
-        )
-        for bin_val in range(1, self.dataset.dataset_desc.bins+1):
-            mask = (self.dataset.qmask == bin_val)
-            ref[bin_val-1] = py_dense_correlator(self.dataset.data, mask)
-        logger.info("Numpy dense correlator took %.1f ms" % ((time() - t0)*1e3))
-        self.ref = ref
-
-
     def compare(self, res, method_name):
-        errors = res[:, 1:] - self.ref
+        errors = res - self.ref
         errors_max = np.max(np.abs(errors), axis=1)
-
         for bin_idx in range(errors_max.shape[0]):
             self.assertLess(
                 errors_max[bin_idx], self.tol,
@@ -102,24 +112,31 @@ class TestDense(unittest.TestCase):
         logger.info("OpenCL dense correlator took %.1f ms" % ((time() - t0)*1e3))
         self.compare(res, "OpenCL dense correlator")
 
-    def test_cufft_dense_correlator(self):
-        if not(CUFFT):
-            self.skipTest("Need pycuda and scikit-cuda")
-        self.fftcorrelator = DenseCuFFTCorrelator(
-            self.shape,
-            self.nframes,
-            qmask=self.dataset.qmask,
-            extra_options={"save_fft_plans": False}
+
+    def test_matmul_correlator(self):
+        correlator = MatMulCorrelator(
+            self.shape, self.nframes, self.dataset.qmask
         )
         t0 = time()
-        res = self.fftcorrelator.correlate(self.dataset.data)
-        logger.info("Cuda FFT dense correlator took %.1f ms" % ((time() - t0)*1e3))
-        self.compare(res, "Cuda FFT dense correlator")
+        res = correlator.correlate(self.dataset.data)
+        logger.info("Matmul correlator took %.1f ms" % ((time() - t0)*1e3))
+        self.compare(res, "Matmul correlator")
+
+
+    def test_cuda_matmul_correlator(self):
+        correlator = CublasMatMulCorrelator(
+            self.shape, self.nframes, self.dataset.qmask
+        )
+        t0 = time()
+        res = correlator.correlate(self.dataset.data)
+        logger.info("Cublas Matmul correlator took %.1f ms" % ((time() - t0)*1e3))
+        self.compare(res, "Cublas Matmul correlator")
+
 
     def test_fftw_dense_correlator(self):
-        if not(pyfftw):
+        if pyfftw is None:
             self.skipTest("Need pyfftw")
-        self.fftcorrelator = DenseFFTwCorrelator(
+        self.fftcorrelator = FFTWCorrelator(
             self.shape,
             self.nframes,
             qmask=self.dataset.qmask,
@@ -129,6 +146,25 @@ class TestDense(unittest.TestCase):
         res = self.fftcorrelator.correlate(self.dataset.data)
         logger.info("FFTw dense correlator took %.1f ms" % ((time() - t0)*1e3))
         self.compare(res, "FFTw dense correlator")
+
+
+    def test_cufft_dense_correlator(self):
+        if CUFFT is None:
+            self.skipTest("Need pycuda scikit-cuda")
+        self.fftcorrelator = CUFFTCorrelator(
+            self.shape,
+            self.nframes,
+            qmask=self.dataset.qmask,
+            extra_options={"save_fft_plans": False}
+        )
+        t0 = time()
+        res = self.fftcorrelator.correlate(self.dataset.data)
+        logger.info("CUFFT dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        self.compare(res, "CUFFT dense correlator")
+
+
+
+
 
 
 def suite():
