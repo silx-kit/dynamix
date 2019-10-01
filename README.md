@@ -5,7 +5,7 @@
 
 `dynamix` is a Python module for X-ray photon correlation spectroscopy (XPCS). It primarily aims at offering fast correlation function computation with OpenCL/CUDA implementations.
 
-**Work in progress:** please keep in mind that this is work in progress. The API might change 
+**Work in progress:** please keep in mind that this is work in progress. The API might change at this early stage of the project.
 
 `dynamix` provides classes named **correlators** to compute the XPCS correlation function `g2` defined by
 ![g2](https://latex.codecogs.com/gif.latex?g_2(q,&space;\tau)&space;=&space;\dfrac{&space;\langle&space;\langle&space;I(t,\,&space;p)&space;I(t&space;&plus;&space;\tau,\,&space;p)&space;\rangle_p&space;\rangle_t&space;}&space;{&space;\langle&space;\langle&space;I(t,\,&space;p)&space;\rangle_p&space;\langle&space;I(t&space;&plus;&space;\tau,\,&space;p)&space;\rangle_p&space;\rangle_t&space;})
@@ -73,7 +73,6 @@ Then use a correlator:
 
 ```python
 from dynamix.correlator.dense import MatMulCorrelator
-
 correlator = MatMulCorrelator(shape, nframes, mask=dataset.qmask)
 result = correlator.correlate(data)
 ```
