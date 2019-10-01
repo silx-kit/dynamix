@@ -17,7 +17,7 @@ All correlators compute the function `g_2`, although through different means.
 
 ## Installation
 
-### Python dependencies
+### Python dependencies
 
 dynamix depends on the following python packages:
 
