@@ -36,7 +36,7 @@ import logging
 import unittest
 import numpy as np
 from dynamix.test.utils import XPCSDataset
-from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator
+from dynamix.correlator.dense import py_dense_correlator, FFTWCorrelator, MatMulCorrelator
 from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator, CUFFT
 
 # logging.basicConfig(level=logging.INFO)
@@ -96,21 +96,6 @@ class TestDense(unittest.TestCase):
                 errors_max[bin_idx], self.tol,
                 "%s: something wrong in bin index %d" % (method_name, bin_idx)
             )
-
-    def test_dense_correlator(self):
-        self.correlator = DenseCorrelator(
-            self.shape,
-            self.nframes,
-            qmask=self.dataset.qmask,
-            dtype=self.dataset.dataset_desc.dtype,
-            profile=True
-        )
-        t0 = time()
-        res = self.correlator.correlate(
-            self.dataset.data
-        )
-        logger.info("OpenCL dense correlator took %.1f ms" % ((time() - t0)*1e3))
-        self.compare(res, "OpenCL dense correlator")
 
 
     def test_matmul_correlator(self):
