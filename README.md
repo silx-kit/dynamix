@@ -8,7 +8,7 @@
 **Work in progress:** please keep in mind that this is work in progress. The API might change at this early stage of the project.
 
 `dynamix` provides classes named **correlators** to compute the XPCS correlation function `g2` defined by
-![g2](https://latex.codecogs.com/gif.latex?g_2(q,&space;\tau)&space;=&space;\dfrac{&space;\langle&space;\langle&space;I(t,\,&space;p)&space;I(t&space;&plus;&space;\tau,\,&space;p)&space;\rangle_p&space;\rangle_t&space;}&space;{&space;\langle&space;\langle&space;I(t,\,&space;p)&space;\rangle_p&space;\langle&space;I(t&space;&plus;&space;\tau,\,&space;p)&space;\rangle_p&space;\rangle_t&space;})
+![g2](https://latex.codecogs.com/gif.latex?g_2(q,&space;\tau)&space;=&space;\dfrac{&space;\langle&space;\langle&space;I(t,&space;p)&space;I(t&space;&plus;&space;\tau,&space;p)&space;\rangle_p&space;\rangle_t&space;}&space;{&space;\langle&space;\langle&space;I(t,&space;p)&space;\rangle_p&space;\langle&space;I(t&space;&plus;&space;\tau,&space;p)&space;\rangle_p&space;\rangle_t&space;})
 
 where `< . >_p` denotes averaging pixels belonging to the current bin (scattering vector), and `< . >_t` denotes time averaging.
 
