@@ -73,7 +73,7 @@ Then use a correlator:
 
 ```python
 from dynamix.correlator.dense import MatMulCorrelator
-correlator = MatMulCorrelator(shape, nframes, mask=dataset.qmask)
+correlator = MatMulCorrelator(shape, nframes, qmask=dataset.qmask)
 result = correlator.correlate(data)
 ```
 
