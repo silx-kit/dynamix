@@ -53,6 +53,51 @@ def py_dense_correlator(xpcs_data, mask):
         res[i] = np.sum(dia_n)/np.sum(dia_d) / lenmatr
     return res
 
+def y_dense_correlator(xpcs_data, mask):
+    """
+    version of YC
+    Reference implementation of the dense correlator.
+
+    Parameters
+    -----------
+    xpcs_data: numpy.ndarray
+        Stack of XPCS frames with shape (n_frames, n_rows, n_columns)
+    mask: numpy.ndarray
+        Mask of bins in the format (n_rows, n_columns).
+        Zero pixels indicate unused pixels.
+    """
+    ind = np.where(mask > 0) # unused pixels are 0
+    xpcs_data = xpcs_data[:, ind[0], ind[1]] # (n_tau, n_pix)
+    del ind
+    ltimes, lenmatr = np.shape(xpcs_data) # n_tau, n_pix
+    meanmatr = np.array(np.mean(xpcs_data, axis=1),np.float32) # xpcs_data.sum(axis=-1).sum(axis=-1)/n_pix
+    meanmatr.shape = 1, ltimes
+
+ 
+    if ltimes*lenmatr>1000*512*512:
+        nn = 16
+        newlen = lenmatr//nn
+        num = np.dot(np.array(xpcs_data[:,:newlen],np.float32), np.array(xpcs_data[:,:newlen],np.float32).T) 
+        xpcs_data =  xpcs_data[:,newlen:] + 0  
+        for i in range(1,nn-1,1):
+            num += np.dot(np.array(xpcs_data[:,:newlen],np.float32),np.array(xpcs_data[:,:newlen],np.float32).T)     
+            xpcs_data = xpcs_data[:,newlen:] + 0  
+        num += np.dot(np.array(xpcs_data,np.float32), np.array(xpcs_data,np.float32).T) 
+    else:
+        num = np.dot(np.array(xpcs_data,np.float32), np.array(xpcs_data,np.float32).T)  
+    
+    num /= lenmatr
+    denom = np.dot(meanmatr.T, meanmatr)
+    del meanmatr
+    res = np.zeros((ltimes-1,3)) # was ones()
+    for i in range(1,ltimes,1): # was ltimes-1, so res[-1] was always 1 !
+        dia_n = np.diag(num, k=i)
+        sdia_d = np.diag(denom, k=i)
+        res[i-1,0] = i
+        res[i-1,1] = np.sum(dia_n)/np.sum(sdia_d) 
+        res[i-1,2] = np.std(dia_n/sdia_d) / len(sdia_d)**0.5
+    return res
+
 
 class MatMulCorrelator(BaseCorrelator):
 
@@ -66,10 +111,12 @@ class MatMulCorrelator(BaseCorrelator):
 
 
     def correlate(self, frames):
-        res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+        #res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+        res = []
         for i, bin_value in enumerate(self.bins):
             mask = (self.qmask == bin_value)
-            res[i] = py_dense_correlator(frames, mask)
+            #res[i] = py_dense_correlator(frames, mask)
+            res.append(y_dense_correlator(frames, mask))#errorbars included 
         return res
 
 
