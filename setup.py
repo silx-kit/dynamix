@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-from setuptools import setup
+#from setuptools import setup, Extension
+from numpy.distutils.core import setup, Extension
 import os
 
 def get_version():
@@ -23,7 +24,15 @@ def setup_package():
     packages_folders = [
         "correlator",
         "resources",
+        "io",
     ]
+    ext = [Extension(name='dynamix.correlator.WXPCS',
+                 sources=['dynamix/correlator/fecorr.f', 
+                 'dynamix/correlator/fecorrt.f', 
+                 'dynamix/correlator/droplet3.f',
+                 'dynamix/correlator/dropimgood.f',
+                 'dynamix/correlator/eigerpix.f'],
+                 f2py_options=['--verbose'])]
     packages = ["dynamix", "dynamix.test"]
     package_dir = {"dynamix": "dynamix",
                    "dynamix.test": "dynamix/test"}
@@ -52,6 +61,7 @@ def setup_package():
                 'opencl/*.cl',
             ]
         },
+        ext_modules=ext,
         install_requires = [
           'numpy',
           'pyopencl',
