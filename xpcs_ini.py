@@ -3,10 +3,6 @@
 #reads the ini configuration file
 import sys
 import os
-#sys.path.append("/users/chushkin/.local/lib/python3.7/site-packages/dynamix")
-#sys.path.append("/data/id10/inhouse/Programs/PyXPCS_project/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Analysis/Glass_school_2019/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Programs/PyXPCS_project/wxpcs")
 import _pickle as cPickle
 import numpy as np
 import time
@@ -63,26 +59,6 @@ def y_dense_correlator(xpcs_data, mask):
         res[i-1,2] = np.std(dia_n/sdia_d) / len(sdia_d)**0.5
     return res, num/denom
 
-
-def cftomt_testing(d):
-   par = 16
-   tmp = d[par:,:3]
-   nt = []
-   nd = []
-   nse = []
-   for i in range(par):
-     nt.append(d[i,0])
-     nd.append(d[i,1])
-     nse.append(d[i,2])
-   while len(tmp[:,0])>=par:
-     ntmp = (tmp[:-1,:]+tmp[1:,:])/2
-     for i in range(0,par,2):
-        nt.append(ntmp[i,0])
-        nd.append(ntmp[i,1])
-        nse.append(ntmp[i,2])
-     tmp = ntmp[par:-1:2,:3]
-   x = np.array([nt,nd,nse]).T
-   return x
 
 
 ################# READING CONFIG FILE ##########################################################################
@@ -146,8 +122,6 @@ flatfield_file = config["detector"]["flatfield"]
 from dynamix.plot.draw_result import plot_cf, show_trc
 import pylab as plt
 
-#correlator = "event"
-#correlator = "intensity"
 
 if correlator == "event":
     ###### event ######################
@@ -222,8 +196,6 @@ elif correlator == "intensity":
     if not os.path.exists(test_savdir):
         os.makedirs(test_savdir)
         print("Create",test_savdir)
-    #cx = int(cx+0.5)
-    #cy = int(cy+0.5)  
     ##### read data ##########################################
     if sufd.find("edf") > -1:#== ".edf":
         data = readdata.get_data(sample_dir,prefd,sufd,nf1,nf2)#[:3000,:,:]
@@ -250,13 +222,13 @@ elif correlator == "intensity":
         pass
     else:
         np.savez_compressed(savdir+sname+"_2D.npz",data=np.array(np.mean(data,0),np.float32))
-        #np.savetxt(savdir+sname+"_trace.dat",np.array(np.mean(np.mean(data,1),1),np.float32))
-        #exit()
+        print("Run the qmask_ini.py")
+        exit()
     data = np.array(data,np.uint8)
     print("Data size is %2.2f Gigabytes" % (data.size*data.itemsize/1024**3))
     print("Data type", data.dtype,data.max())
        
-    cdata = np.array(np.load(savdir+sname+"_gaus.npy"),np.float32)#[cy-64:cy+64,cx-64:cx+64]
+    cdata = np.array(np.load(savdir+sname+"_gaus.npy"),np.float32)
     #cdata = readdata.readnpz(savdir+sname+"_2D.npz")
     #from scipy.ndimage import gaussian_filter
     #cdata = gaussian_filter(cdata,0.5) 
@@ -293,7 +265,7 @@ elif correlator == "intensity":
     
     #### MatMul Correlator #####################################
     #correlator = FFTWCorrelator(shape,nframes,qmask=qqmask)
-     #print("Using FFTW")
+    #print("Using FFTW")
     correlator = MatMulCorrelator(shape,nframes,qmask=qqmask)
     print("Using CPU")
     #correlator = CublasMatMulCorrelator(shape, nframes, qmask=qqmask)
@@ -338,7 +310,6 @@ elif correlator == "intensity":
         cf[:,0] *= dt
         cf[:,1] /= correction # make correct baseline
         cf[:,2] /= correction # make correct baseline
-        #cf = cftomt_testing(cf)
         cf = tools.cftomt(cf)
         res.append(cf)
         if q == 1:
