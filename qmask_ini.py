@@ -3,11 +3,6 @@
 #reads the ini configuration file
 import sys
 import os
-#sys.path.append("/users/chushkin/.local/lib/python3.7/site-packages/dynamix")
-#sys.path.append("/data/id10/inhouse/Programs/PyXPCS_project/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Analysis/Glass_school_2019/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Programs/PyXPCS_project/wxpcs")
-import _pickle as cPickle
 import numpy as np
 import time
 import fabio
@@ -89,13 +84,6 @@ except:
     exit()
 
 
-#improve the mask 
-#mask[:,int(cx)-2:int(cx)+2] = 1 
-#mask[[379,359,357],[608,598,608]] = 1
-
-#mask[1060,995] = 1
-#mask[1061,:] = 1 
-
 ind = np.where((data>0)&(mask<1))
 
 data = np.ma.array(data,mask=mask)
@@ -138,7 +126,6 @@ qmask = np.ma.array(qmask)
 qmask[qmask==0]=np.ma.masked
 
 new_saxs = np.ma.array(new_saxs,mask=mask)
-#print("SAXS and radi modulus error %f" % np.abs(data-new_saxs).mean())
 err = np.abs(data-new_saxs)[ind].mean()/np.mean(data[ind])
 print("SAXS and radi modulus error %f" % err)
 print("Total calculation time %3.4f sec" % (time.time()-t0))
