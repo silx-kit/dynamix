@@ -1,9 +1,6 @@
 #! /usr/bin/env python3
 #tools
 import sys
-#sys.path.append("/data/id10/inhouse/Programs/PyXPCS_project/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Analysis/Glass_school_2019/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Programs/PyXPCS_project/wxpcs")
 
 import  numpy as np
 import time
