@@ -25,6 +25,8 @@ def setup_package():
         "correlator",
         "resources",
         "io",
+        "plot",
+        "tools"
     ]
     ext = [Extension(name='dynamix.correlator.WXPCS',
                  sources=['dynamix/correlator/fecorr.f', 
