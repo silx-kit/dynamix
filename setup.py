@@ -26,11 +26,12 @@ def setup_package():
         "resources",
         "io",
         "plot",
-        "tools"
+        "tools",
+        "cli",
     ]
     ext = [Extension(name='dynamix.correlator.WXPCS',
-                 sources=['dynamix/correlator/fecorr.f', 
-                 'dynamix/correlator/fecorrt.f', 
+                 sources=['dynamix/correlator/fecorr.f',
+                 'dynamix/correlator/fecorrt.f',
                  'dynamix/correlator/droplet3.f',
                  'dynamix/correlator/dropimgood.f',
                  'dynamix/correlator/eigerpix.f'],
@@ -71,6 +72,14 @@ def setup_package():
         long_description = """
         dynamix - software for X-ray photon correlation spectroscopy
         """,
+
+        entry_points = {
+            'console_scripts': [
+                "xpcs=dynamix.cli.xpcs_ini:main",
+                "beam_center=dynamix.cli.beam_center:main",
+                "qmask=dynamix.cli.qmask_ini:main",
+            ],
+        },
 
         zip_safe=True
     )
