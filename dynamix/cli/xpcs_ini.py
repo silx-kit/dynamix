@@ -200,7 +200,7 @@ def main():
         if sufd.find("edf") > -1:#== ".edf":
             data = readdata.get_data(sample_dir,prefd,sufd,nf1,nf2)#[:3000,:,:]
         elif sufd == ".h5":
-            data = h5reader.myreader(sample_dir+sname+"_raw.h5")[nf1:nf2,:,:]#,cy-64:cy+64,cx-64:cx+64]
+            data = h5reader.myreader(sample_dir+sname+".h5")[nf1:nf2,:,:]#,cy-64:cy+64,cx-64:cx+64]
         else:
             exit()
 
@@ -211,17 +211,20 @@ def main():
 
 
         if mask_file != 'none':
-            mask = EdfMethods.loadedf(mask_file)#[cy-64:cy+64,cx-64:cx+64]#reads edf and npy
+            mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
+            mask[mask>1] = 1
             data[:,mask>0] = 0
         if flatfield_file != 'none':
             flatfield = EdfMethods.loadedf(flatfield_file)
-            fcorrection = (flatfield[mask<1]**2).mean()/flatfield[mask<1].mean()**2
-            print("Flatfield correction %2.4f" % fcorrection)
+            flatfield[flatfield<0] = 1
+            #fcorrection = (flatfield[mask<1]**2).mean()/flatfield[mask<1].mean()**2
+            #print("Flatfield correction %2.4f" % fcorrection)
             #data = data/flatfield
+        else: flatfield = np.ones(mask.shape,np.float32)
         if os.path.isfile(savdir+sname+"_2D.npz"):
             pass
         else:
-            np.savez_compressed(savdir+sname+"_2D.npz",data=np.array(np.mean(data,0),np.float32))
+            np.savez_compressed(savdir+sname+"_2D.npz",data=np.array(np.mean(data,0)/flatfield,np.float32))
             print("Run the qmask_ini.py")
             exit()
         data = np.array(data,np.uint8)
@@ -254,6 +257,7 @@ def main():
         data = data[:,sindy:eindy,sindx:eindx]
         qqmask = qqmask[sindy:eindy,sindx:eindx]
         cdata = cdata[sindy:eindy,sindx:eindx]
+        flatfield = flatfield[sindy:eindy,sindx:eindx]
         print("Reduced data size is %2.2f Gigabytes" % (data.size*data.itemsize/1024**3))
 
         shape = np.shape(data[0,:,:])
@@ -282,13 +286,14 @@ def main():
         cf[:,0] = np.arange(1,nframes,1)*dt
         for q in range(1,number_q+1,1):
             trace[:,n] =  np.sum(data[:,qqmask==q],1)
-            correction = (cdata[qqmask==q]**2).mean()/cdata[qqmask==q].mean()**2# * fcorrection
-            #cf[:,1] = result[n][1:]/correction
-            #cf[:,2] = result[n][1:]/correction*3e-3
-            cf = result[n]
-            cf[:,0] *= dt
-            cf[:,1] /= correction # make correct baseline
-            cf[:,2] /= correction # make correct baseline
+            fcorrection = (flatfield[qqmask==q]**2).mean()/flatfield[qqmask==q].mean()**2
+            correction = (cdata[qqmask==q]**2).mean()/cdata[qqmask==q].mean()**2 * fcorrection
+            #cf[:,1] = result[n][1:]/correction#GPU
+            #cf[:,2] = result[n][1:]/correction*3e-3#GPU
+            cf = result[n]#CPU
+            #cf[:,0] *= dt#CPU
+            cf[:,1] /= correction # make correct baseline#CPU
+            cf[:,2] /= correction # make correct baseline#CPU
             cfm = tools.cftomt(cf)
             res.append(cfm)
             if q == 1:
