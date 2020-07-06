@@ -29,6 +29,7 @@ def plot_cf(xx,sname=''):
     plt.ylim((1,1+(max_y-1)*1.3))
     plt.legend(loc=1,fontsize=10,ncol=n//6)
     plt.title(sname)
+    plt.tight_layout()
     plt.show()
 
 def show_trc(cor,sname=''):
@@ -40,4 +41,5 @@ def show_trc(cor,sname=''):
     plt.title(sname)
     plt.xlabel('frame')
     plt.ylabel('frame')
+    plt.tight_layout()
     plt.show() 
