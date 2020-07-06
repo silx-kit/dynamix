@@ -78,7 +78,8 @@ def main():
         print("Cannot read "+savdir+sname+"_2D.npz")
         exit()
     try:
-        mask = EdfMethods.loadedf(mask_file)
+        mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
+        mask[mask>1] = 1
     except:
         print("Cannot read "+mask_file)
         exit()
