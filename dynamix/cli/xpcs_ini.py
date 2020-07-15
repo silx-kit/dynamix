@@ -227,7 +227,7 @@ def main():
             np.savez_compressed(savdir+sname+"_2D.npz",data=np.array(np.mean(data,0)/flatfield,np.float32))
             print("Run the qmask_ini.py")
             exit()
-        data = np.array(data,np.uint8)
+        #data = np.array(data,np.uint8)
         print("Data size is %2.2f Gigabytes" % (data.size*data.itemsize/1024**3))
         print("Data type", data.dtype,data.max())
 
