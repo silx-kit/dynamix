@@ -1,5 +1,6 @@
 setuptools
 wheel
+six
 numpy
 h5py
 scipy
@@ -7,5 +8,5 @@ fabio
 silx
 pytools
 mako
-pyopencl
 pyfftw
+pyopencl
