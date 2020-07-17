@@ -9,4 +9,5 @@ silx
 pytools
 mako
 pyfftw
-pyopencl
+pybind11
+pyopencl --only-binary=pyopencl
