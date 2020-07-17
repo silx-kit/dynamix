@@ -1,0 +1,8 @@
+numpy
+h5py
+scipy
+silx
+pytools
+mako
+pyopencl
+pyftw
