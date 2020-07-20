@@ -1,0 +1,13 @@
+setuptools
+wheel
+six
+numpy
+h5py
+scipy
+fabio
+silx
+pytools
+mako
+pyfftw
+pybind11
+pyopencl --only-binary=pyopencl
