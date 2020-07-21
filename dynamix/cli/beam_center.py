@@ -77,13 +77,25 @@ def main():
     except:
         print("Cannot read "+savdir+sname+"_2D.npz")
         exit()
-    try:
-        mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
-        mask[mask>1] = 1
-    except:
-        print("Cannot read "+mask_file)
-        exit()
 
+    if  beamstop_mask != 'none':
+        try:
+            bmask = np.abs(EdfMethods.loadedf(beamstop_mask))#reads edf and npy
+            bmask[bmask>1] = 1
+        except:
+            print("Cannot read beamstop mask %s, skip" % beamstop_mask)
+
+    if mask_file != 'none':
+        try:
+            mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
+            mask[mask>1] = 1
+            try: 
+                mask[bmask>0] = 1
+            except: pass 
+            data[mask>0] = 0
+        except:
+            print("Cannot read mask %s, exit" % mask_file)
+            exit() 
 
     ################################################
 
