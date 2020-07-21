@@ -6,6 +6,7 @@ import  numpy as np
 import time
 import os
 import pylab as plt
+from dynamix.io import readdata, EdfMethods, h5reader
 #####radial averaging ###########
 
 def radi(saxs,mask,cx,cy):
@@ -168,3 +169,128 @@ def cftomt(d, par=16):
     x = np.array([nt,nd,nse]).T
     return x
 
+
+def make_q(config):
+    #### Sample description ######################################################################################
+
+    sname = config["sample_description"]["name"]
+
+
+    #### Data location ######################################################################################
+
+    datdir = config["data_location"]["data_dir"]
+    sample_dir = config["data_location"]["sample_dir"]
+    prefd = config["data_location"]["data_prefix"]
+    sufd = config["data_location"]["data_sufix"]
+    nf1 = int(config["data_location"]["first_file"])
+    nf2 = int(config["data_location"]["last_file"])
+    darkdir = config["data_location"]["dark_dir"]
+    df1 = int(config["data_location"]["first_dark"])
+    df2 = int(config["data_location"]["last_dark"])
+    savdir = config["data_location"]["result_dir"]
+
+
+    #### Experimental setup ######################################################################################
+
+    geometry = config["exp_setup"]["geometry"]
+    cx = float(config["exp_setup"]["dbx"])
+    cy = float(config["exp_setup"]["dby"])
+    dt = float(config["exp_setup"]["lagtime"])
+    lambdaw = float(config["exp_setup"]["wavelength"])
+    distance = float(config["exp_setup"]["detector_distance"])
+    first_q = float(config["exp_setup"]["firstq"])
+    width_q = float(config["exp_setup"]["widthq"])
+    step_q = float(config["exp_setup"]["stepq"])
+    number_q = int(config["exp_setup"]["numberq"])
+    beamstop_mask = config["exp_setup"]["beamstop_mask"]
+
+    #### Correlator info  ######################################################################################
+
+
+    correlator = config["correlator"]["method"]
+    lth = int(config["correlator"]["low_threshold"])
+    bADU = int(config["correlator"]["bottom_ADU"])
+    tADU = int(config["correlator"]["top_ADU"])
+    mNp = float(config["correlator"]["max_number"])
+    aduph = int(config["correlator"]["photon_ADU"])
+    ttcf_par = int(config["correlator"]["ttcf"])
+
+    #### Detector description  ######################################################################################
+    detector = config["detector"]["det_name"]
+    pix_size = float(config["detector"]["pixels"])
+    mask_file = config["detector"]["mask"]
+    flatfield_file = config["detector"]["flatfield"]
+    ###################################################################################################################
+    print("Making qs")
+     
+    try:
+        data = readdata.readnpz(savdir+sname+"_2D.npz")
+    except:
+        print("Cannot read "+savdir+sname+"_2D.npz")
+        exit()
+
+    if  beamstop_mask != 'none':
+        try:
+            bmask = np.abs(EdfMethods.loadedf(beamstop_mask))#reads edf and npy
+            bmask[bmask>1] = 1
+        except:
+            print("Cannot read beamstop mask %s, skip" % beamstop_mask)
+
+    if mask_file != 'none':
+        try:
+            mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
+            mask[mask>1] = 1
+            try: 
+                mask[bmask>0] = 1
+            except: pass 
+            data[mask>0] = 0
+        except:
+            print("Cannot read mask %s, exit" % mask_file)
+            exit() 
+
+
+    ind = np.where((data>0)&(mask<1))
+
+    data = np.ma.array(data,mask=mask)
+    qmask = mask*0
+
+
+    t0 = time.time()
+    rad, r_q, new_saxs = radi(data,mask,cx,cy)#radial averaging
+    print("Calculation time %3.4f sec" % (time.time()-t0))
+
+    np.save(savdir+sname+"_gaus.npy",np.array(new_saxs,np.float32))
+
+
+    rad[:,0] = 4*np.pi/lambdaw*np.sin(np.arctan(pix_size*rad[:,0]/distance)/2.0)#q vector calculation
+    r_q = 4*np.pi/lambdaw*np.sin(np.arctan(pix_size*r_q/distance)/2.0)#q vector calculation
+    width_p = np.tan(np.arcsin(width_q*lambdaw/4/np.pi)*2)*distance/pix_size
+    qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
+
+    print("Number of Qs %d" % number_q)
+    print("Width of ROI is %1.1f pixels" % width_p)
+    np.savetxt(savdir+sname+"_1D.dat",rad)
+
+    #qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
+    #qmask[mask>0] = 0
+    #np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
+    #qmask[qmask>number_q] = 0
+
+
+    #qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
+    qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q)
+    qmask = mask*0
+    i_qp = qp*0
+    i_bands = []
+    n = 0
+    for i in qp:
+      i_qp[n] = rad[(np.abs(rad[:,0]-i)==(np.abs(rad[:,0]-i).min())),1]
+      ind1 = np.where((rad[:,0]>=i-width_q/2)&(rad[:,0]<=i+width_q/2))[0]
+      i_bands.append(ind1)
+      n += 1
+      indq = np.where(np.abs(r_q-i)<=width_q/2)
+      qmask[indq] = n
+
+    qmask[mask>0] = 0
+    np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
+    return
