@@ -50,6 +50,7 @@ def main():
     distance = float(config["exp_setup"]["detector_distance"])
     first_q = float(config["exp_setup"]["firstq"])
     width_q = float(config["exp_setup"]["widthq"])
+    step_q = float(config["exp_setup"]["stepq"])
     number_q = int(config["exp_setup"]["numberq"])
     beamstop_mask = config["exp_setup"]["beamstop_mask"]
 
@@ -77,12 +78,25 @@ def main():
     except:
         print("Cannot read "+savdir+sname+"_2D.npz")
         exit()
-    try:
-        mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
-        mask[mask>1] = 1
-    except:
-        print("Cannot read "+mask_file)
-        exit()
+
+    if  beamstop_mask != 'none':
+        try:
+            bmask = np.abs(EdfMethods.loadedf(beamstop_mask))#reads edf and npy
+            bmask[bmask>1] = 1
+        except:
+            print("Cannot read beamstop mask %s, skip" % beamstop_mask)
+
+    if mask_file != 'none':
+        try:
+            mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
+            mask[mask>1] = 1
+            try: 
+                mask[bmask>0] = 1
+            except: pass 
+            data[mask>0] = 0
+        except:
+            print("Cannot read mask %s, exit" % mask_file)
+            exit() 
 
 
     ind = np.where((data>0)&(mask<1))
@@ -107,13 +121,16 @@ def main():
     print("Width of ROI is %1.1f pixels" % width_p)
     np.savetxt(savdir+sname+"_1D.dat",rad)
 
-    qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
-    qmask[mask>0] = 0
-    np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
-    qmask[qmask>number_q] = 0
+    #qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
+    #qmask[mask>0] = 0
+    #np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
+    #qmask[qmask>number_q] = 0
 
 
-    qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
+    #qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
+    qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q)
+    print(qp)
+    qmask = mask*0
     i_qp = qp*0
     i_bands = []
     n = 0
@@ -122,6 +139,13 @@ def main():
       ind1 = np.where((rad[:,0]>=i-width_q/2)&(rad[:,0]<=i+width_q/2))[0]
       i_bands.append(ind1)
       n += 1
+      indq = np.where(np.abs(r_q-i)<=width_q/2)
+      qmask[indq] = n
+
+    qmask[mask>0] = 0
+    np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
+    qmask[qmask>number_q] = 0
+
 
     qmask = np.ma.array(qmask)
     qmask[qmask==0]=np.ma.masked
