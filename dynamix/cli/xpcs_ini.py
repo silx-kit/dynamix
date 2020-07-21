@@ -99,6 +99,7 @@ def main():
     distance = float(config["exp_setup"]["detector_distance"])
     first_q = float(config["exp_setup"]["firstq"])
     width_q = float(config["exp_setup"]["widthq"])
+    step_q = float(config["exp_setup"]["stepq"])
     number_q = int(config["exp_setup"]["numberq"])
     qmask_file = config["exp_setup"]["q_mask"]
     beamstop_mask = config["exp_setup"]["beamstop_mask"]
@@ -200,7 +201,7 @@ def main():
         if sufd.find("edf") > -1:#== ".edf":
             data = readdata.get_data(sample_dir,prefd,sufd,nf1,nf2)#[:3000,:,:]
         elif sufd == ".h5":
-            data = h5reader.myreader(sample_dir+sname+".h5")[nf1:nf2,:,:]#,cy-64:cy+64,cx-64:cx+64]
+            data = h5reader.myreader(sample_dir+prefd+sufd)[nf1:nf2,:,:]
         else:
             exit()
 
@@ -210,24 +211,47 @@ def main():
             np.savez_compressed(savdir+sname+"_2D_raw.npz",data=np.array(np.mean(data,0),np.float32))
 
 
+        if  beamstop_mask != 'none':
+            try:
+                bmask = np.abs(EdfMethods.loadedf(beamstop_mask))#reads edf and npy
+                bmask[bmask>1] = 1
+            except:
+                print("Cannot read beamstop mask %s, skip" % beamstop_mask)
+
         if mask_file != 'none':
-            mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
-            mask[mask>1] = 1
-            data[:,mask>0] = 0
+            try:
+                mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
+                mask[mask>1] = 1
+                try: 
+                    mask[bmask>0] = 1
+                except: pass 
+                data[:,mask>0] = 0
+            except:
+                print("Cannot read mask %s, exit" % mask_file)
+                exit() 
+
         if flatfield_file != 'none':
-            flatfield = EdfMethods.loadedf(flatfield_file)
-            flatfield[flatfield<0] = 1
-            #fcorrection = (flatfield[mask<1]**2).mean()/flatfield[mask<1].mean()**2
-            #print("Flatfield correction %2.4f" % fcorrection)
-            #data = data/flatfield
+            try: 
+                flatfield = EdfMethods.loadedf(flatfield_file)
+                flatfield[flatfield<0] = 1
+                #fcorrection = (flatfield[mask<1]**2).mean()/flatfield[mask<1].mean()**2
+                #print("Flatfield correction %2.4f" % fcorrection)
+                #data = data/flatfield
+            except:
+                print("Cannot read flat field %s skip" % flatfield_file)
+                flatfield = np.ones(mask.shape,np.float32)
         else: flatfield = np.ones(mask.shape,np.float32)
         if os.path.isfile(savdir+sname+"_2D.npz"):
             pass
         else:
             np.savez_compressed(savdir+sname+"_2D.npz",data=np.array(np.mean(data,0)/flatfield,np.float32))
-            print("Run the qmask_ini.py")
-            exit()
-        #data = np.array(data,np.uint8)
+        if os.path.isfile(qmask_file): 
+            pass
+        else:
+            tools.make_q(config)
+            #print("Run the qmask")
+            #exit()
+
         print("Data size is %2.2f Gigabytes" % (data.size*data.itemsize/1024**3))
         print("Data type", data.dtype,data.max())
 
@@ -240,9 +264,12 @@ def main():
 
 
         if qmask_file != 'none':
-            qqmask = EdfMethods.loadedf(qmask_file)#[cy-64:cy+64,cx-64:cx+64]
-            qqmask[mask>0] = 0
-            qqmask[qqmask>number_q] = 0
+            try:
+                qqmask = EdfMethods.loadedf(qmask_file)#[cy-64:cy+64,cx-64:cx+64]
+                qqmask[mask>0] = 0
+                qqmask[qqmask>number_q] = 0
+            except:
+                print("Cannot read qmask %s, skip" % qmask_file)
         else:
             qqmask = mask*0
             qqmask[mask<1] = 1
@@ -291,7 +318,7 @@ def main():
             #cf[:,1] = result[n][1:]/correction#GPU
             #cf[:,2] = result[n][1:]/correction*3e-3#GPU
             cf = result[n]#CPU
-            #cf[:,0] *= dt#CPU
+            cf[:,0] *= dt#CPU
             cf[:,1] /= correction # make correct baseline#CPU
             cf[:,2] /= correction # make correct baseline#CPU
             cfm = tools.cftomt(cf)
@@ -325,7 +352,8 @@ def main():
         '''
         print("Correlation time %3.2f seconds" % (time.time()-t0))
         q_title='#q values 1/A:'
-        qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
+        #qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
+        qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q)
         for q in qp:
             q_title = q_title+" %.5f " % q
         q_title=q_title+'\n'
