@@ -129,7 +129,7 @@ def main():
 
     #qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
     qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q)
-    print(qp)
+    print("Q values = ", qp)
     qmask = mask*0
     i_qp = qp*0
     i_bands = []
@@ -160,7 +160,7 @@ def main():
     plt.title("Radi")
 
     plt.figure()
-    plt.imshow(qmask,cmap='gray_r')
+    plt.imshow(qmask.data,cmap='gray_r')
     plt.plot(cx,cy,'r+')
     plt.grid()
     plt.xlabel("Pixel x")
