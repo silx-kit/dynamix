@@ -12,6 +12,19 @@ from sys import argv,exit,stdout
 import time
 import os
 
+####### Save pixels and intensities ######
+def events_load(fname):
+    edata = open(fname,'rb')
+    pixels,s = cPickle.load(edata)
+    edata.close()
+    return pixels,s
+
+def events_save(fname,pixels,s):
+    edata = open(fname,'wb')
+    cPickle.dump([pixels,s],edata,-1)
+    edata.close()
+    return
+
 ######## Read npz #####
 def readnpz(FileName):
     f = np.load(FileName)
