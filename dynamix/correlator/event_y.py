@@ -18,17 +18,17 @@ def ecorrts(pixels,s,for_norm):
     t=[]
     for t1 in rpixels:
       t += [t1]*s[t1]
-    print("time for pre loop "+str(time()-timee))
+    #print("time for pre loop "+str(time()-timee))
     pix = np.concatenate(pixels).ravel()
-    print('start sorting')
+    #print('start sorting')
     times = time()
     pix = np.array(pix,dtype=np.int32) 
     t = np.array(t)
     indpi = np.lexsort((t,pix))
     t = t[indpi]
     pix = pix[indpi] 
-    print('sorting took '+ str(time()-times))
-    print('start main loop')
+    #print('sorting took '+ str(time()-times))
+    #print('start main loop')
     timem = time()
     lenpi = len(pix)
     cor = np.zeros((lpixels,lpixels),dtype=np.uint32)
@@ -40,7 +40,7 @@ def ecorrts(pixels,s,for_norm):
     #cor1 = np.zeros((lpixels,lpixels),dtype=np.uint32)
     #cor1 = fecorrt(pix[ind:],t[ind:],cor1,len(pix[ind:]),lpixels)#fortran module    
     #cor = cor+cor1
-    print("time for correlating "+str(time()-timem))
+    #print("time for correlating "+str(time()-timem))
     print("average photons per frame "+str(np.mean(s)))
     #print(cor.min(),cor.max())
     lens = len(s)
@@ -61,7 +61,7 @@ def ecorrts(pixels,s,for_norm):
     wcf = x+0
     mtcf = cftomt_testing(x)
     cor /= norm
-    print("Total time for correlating "+str(time()-timee))
+    print("Total time for correlating %2.2f sec" % (time()-timee))
     return wcf,mtcf,cor
 ##############################################################################
 
