@@ -255,7 +255,11 @@ def main():
         print("Data size is %2.2f Gigabytes" % (data.size*data.itemsize/1024**3))
         print("Data type", data.dtype,data.max())
 
-        cdata = np.array(np.load(savdir+sname+"_gaus.npy"),np.float32)
+        if os.path.isfile(savdir+sname+"_gaus.npy"):
+            cdata = np.array(np.load(savdir+sname+"_gaus.npy"),np.float32)
+        else:
+            tools.make_q(config)
+            cdata = np.array(np.load(savdir+sname+"_gaus.npy"),np.float32)
         #cdata = readdata.readnpz(savdir+sname+"_2D.npz")
         #from scipy.ndimage import gaussian_filter
         #cdata = gaussian_filter(cdata,0.5)
