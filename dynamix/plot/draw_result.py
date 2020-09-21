@@ -27,7 +27,10 @@ def plot_cf(xx,sname=''):
     plt.xlabel(r"lag time $\tau$ (s)")
     plt.ylabel(r"g$^{(2)}$(q,$\tau$)")
     plt.ylim((1,1+(max_y-1)*1.3))
-    plt.legend(loc=1,fontsize=10,ncol=n//6)
+    try:
+        plt.legend(loc=1,fontsize=10,ncol=n//6)
+    except:
+        plt.legend(loc=1,fontsize=10)
     plt.title(sname)
     plt.tight_layout()
     plt.show()
