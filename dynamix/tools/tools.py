@@ -255,9 +255,9 @@ def make_q(config):
     qmask = mask*0
 
 
-    t0 = time.time()
+    #t0 = time.time()
     rad, r_q, new_saxs = radi(data,mask,cx,cy)#radial averaging
-    print("Calculation time %3.4f sec" % (time.time()-t0))
+    #print("Calculation time %3.4f sec" % (time.time()-t0))
 
     np.save(savdir+sname+"_gaus.npy",np.array(new_saxs,np.float32))
 
@@ -268,7 +268,7 @@ def make_q(config):
     qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
 
     print("Number of Qs %d" % number_q)
-    print("Width of ROI is %1.1f pixels" % width_p)
+    #print("Width of ROI is %1.1f pixels" % width_p)
     np.savetxt(savdir+sname+"_1D.dat",rad)
 
     #qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
