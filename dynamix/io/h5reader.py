@@ -71,10 +71,21 @@ def h5writer(fileName,data):
 def myreader(fileName):
     '''Read a NeXus HDF5 file using h5py and numpy'''
     
-    print("Read a NeXus HDF5 file")
     t0 = time.time()
-    f = h5py.File(fileName, "r")
-
+    #f = h5py.File(fileName, "r")
+    zn = 0
+    while True:
+        try:
+            f = h5py.File(fileName, "r")
+            break # Success!
+        except OSError :    
+            print("Waiting for the file trial %d" % zn)
+            time.sleep(5)
+            zn +=1 
+            if zn==3: 
+                print("File %s cannot be read" % fileName) 
+                exit() 
+    print("Read a NeXus HDF5 file")
     data = f.get('/entry_0000/measurement/data')
     #data = numpy.array(data,numpy.uint8)
     data = numpy.array(data)
