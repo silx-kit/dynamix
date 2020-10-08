@@ -1,3 +1,5 @@
+from math import sqrt
+from collections import namedtuple
 import numpy as np
 import pyopencl.array as parray
 from os import path
@@ -24,8 +26,9 @@ except ImportError:
 
 NCPU = cpu_count()
 
+CorrelationResult = namedtuple("CorrelationResult", "res dev")
 
-def py_dense_correlator(xpcs_data, mask):
+def py_dense_correlator(xpcs_data, mask, calc_std=False):
     """
     Reference implementation of the dense correlator.
 
@@ -36,6 +39,10 @@ def py_dense_correlator(xpcs_data, mask):
     mask: numpy.ndarray
         Mask of bins in the format (n_rows, n_columns).
         Zero pixels indicate unused pixels.
+    calc_std: boolean
+        Calculate the standard deviation in addition to the mean
+    
+    Return: 1 or 2 arrays depending on `calc_std`  
     """
     ind = np.where(mask > 0) # unused pixels are 0
     xpcs_data = np.array(xpcs_data[:, ind[0], ind[1]], np.float32) # (n_tau, n_pix)
@@ -47,11 +54,19 @@ def py_dense_correlator(xpcs_data, mask):
     denom = np.dot(meanmatr.T, meanmatr)
 
     res = np.zeros(ltimes) # was ones()
+    if calc_std:
+        dev = np.zeros_like(res)
+        
     for i in range(ltimes): # was ltimes-1, so res[-1] was always 1 !
-        dia_n = np.diag(num, k=i)
+        dia_n = np.diag(num, k=i) / lenmatr
         dia_d = np.diag(denom, k=i)
-        res[i] = np.sum(dia_n)/np.sum(dia_d) / lenmatr
-    return res
+        res[i] = np.sum(dia_n)/np.sum(dia_d) 
+        if calc_std:
+            dev[i] = np.std(dia_n/dia_d) / sqrt(len(dia_d))
+    if calc_std:
+        return CorrelationResult(res, dev)
+    else:
+        return res
 
 
 class MatMulCorrelator(BaseCorrelator):
@@ -65,12 +80,20 @@ class MatMulCorrelator(BaseCorrelator):
         super()._set_parameters(shape, nframes, qmask, scale_factor, extra_options)
 
 
-    def correlate(self, frames):
+    def correlate(self, frames, calc_std=False):
         res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+        if calc_std:
+            dev = np.zeros_like(res)
         for i, bin_value in enumerate(self.bins):
             mask = (self.qmask == bin_value)
-            res[i] = py_dense_correlator(frames, mask)
-        return res
+            if calc_std:
+                res[i], dev[i] = py_dense_correlator(frames, mask)
+            else:
+                res[i] = py_dense_correlator(frames, mask)
+        if calc_std:
+            return CorrelationResult(res, dev)
+        else:
+            return res
 
 
 
