@@ -9,6 +9,7 @@ from silx.opencl.processing import OpenclProcessing, KernelContainer
 
 class BaseCorrelator(object):
     "Abstract base class for all Correlators"
+
     def __init__(self):
         self.nframes = None
         self.shape = None
@@ -40,10 +41,9 @@ class BaseCorrelator(object):
             self.qmask = np.ones(self.shape, dtype=np.int32)
         else:
             self.qmask = np.ascontiguousarray(qmask, dtype=np.int32)
-            self.bins = np.unique(self.qmask)[1:] # TODO check that zero is not here
-            self.n_bins = self.bins.size
+            self.n_bins = self.qmask.max()
+            self.bins = np.arange(1, self.n_bins + 1, dtype=np.int32)
         self.output_shape = (self.n_bins, self.nframes)
-
 
     def _set_weights(self, weights=None):
         if weights is None:
@@ -155,18 +155,16 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
     def _set_dtype(self, dtype="f"):
         # add checks ?
         self.dtype = dtype
-        self.output_dtype = np.float32 # TODO custom ?
-        self.sums_dtype = np.uint32 # TODO custom ?
+        self.output_dtype = np.float32  # TODO custom ?
+        self.sums_dtype = np.uint32  # TODO custom ?
         self.c_dtype = dtype_to_ctype(self.dtype)
         self.c_sums_dtype = dtype_to_ctype(self.sums_dtype)
-        self.idx_c_dtype = "int" # TODO custom ?
-
+        self.idx_c_dtype = "int"  # TODO custom ?
 
     def _allocate_memory(self):
         # self.d_norm_mask = parray.to_device(self.queue, self.weights)
         if self.qmask is not None:
             self.d_qmask = parray.to_device(self.queue, self.qmask)
-
 
     def _set_data(self, arrays):
         """
@@ -185,9 +183,8 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
             elif isinstance(array, parray.Array):
                 setattr(self, "_old_" + my_array_name, my_array)
                 setattr(self, my_array_name, array)
-            else: # support buffers ?
+            else:  # support buffers ?
                 raise ValueError("Unknown array type %s" % str(type(array)))
-
 
     def _reset_arrays(self, arrays_names):
         for array_name in arrays_names:
@@ -196,7 +193,6 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
             if old_array is not None:
                 setattr(self, array_name, old_array)
                 setattr(self, old_array_name, None)
-
 
     # Overwrite OpenclProcessing.compile_kernel, as it does not support
     # kernels outside silx/opencl/resources
