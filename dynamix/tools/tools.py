@@ -7,6 +7,8 @@ import time
 import os
 import pylab as plt
 from dynamix.io import readdata, EdfMethods, h5reader
+from dynamix.correlator.WXPCS import eigerpix
+
 #####radial averaging ###########
 
 def radi(saxs,mask,cx,cy):
@@ -227,26 +229,24 @@ def make_q(config):
         data = readdata.readnpz(savdir+sname+"_2D.npz")
     except:
         print("Cannot read "+savdir+sname+"_2D.npz")
-        exit()
+        sys.exit()
 
-    if  beamstop_mask != 'none':
-        try:
-            bmask = np.abs(EdfMethods.loadedf(beamstop_mask))#reads edf and npy
-            bmask[bmask>1] = 1
-        except:
-            print("Cannot read beamstop mask %s, skip" % beamstop_mask)
+    #if  beamstop_mask != 'none':
+    #    try:
+    #        bmask = np.abs(EdfMethods.loadedf(beamstop_mask))#reads edf and npy
+    #        bmask[bmask>1] = 1
+    #    except:
+    #        print("Cannot read beamstop mask %s, skip" % beamstop_mask)
 
-    if mask_file != 'none':
-        try:
-            mask = np.abs(EdfMethods.loadedf(mask_file))#reads edf and npy
-            mask[mask>1] = 1
-            try: 
-                mask[bmask>0] = 1
-            except: pass 
-            data[mask>0] = 0
-        except:
-            print("Cannot read mask %s, exit" % mask_file)
-            exit() 
+    ### read beamstop mask ####
+    bmask = read_beamstop_mask(beamstop_mask)
+    
+    ### read detector mask ###
+    mask = read_det_mask(mask_file,detector)
+    
+    mask[bmask>0] = 1
+    
+    data[mask>0] = 0
 
 
     ind = np.where((data>0)&(mask<1))
@@ -258,7 +258,7 @@ def make_q(config):
     #t0 = time.time()
     rad, r_q, new_saxs = radi(data,mask,cx,cy)#radial averaging
     #print("Calculation time %3.4f sec" % (time.time()-t0))
-
+    new_saxs[np.isnan(new_saxs)] = 0
     np.save(savdir+sname+"_gaus.npy",np.array(new_saxs,np.float32))
 
 
@@ -294,3 +294,240 @@ def make_q(config):
     qmask[mask>0] = 0
     np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
     return
+
+
+def test_dir(dir_name):
+    """ test the existance of the directory 
+        if it does not exist then create 
+
+    :param dir_name: directory name
+
+    """
+    test_savdir = os.path.dirname(dir_name)
+    if not os.path.exists(test_savdir):
+        os.makedirs(test_savdir)
+        print("Create",test_savdir)
+    return
+
+
+def format_result(CorrelationResult,qqmask,flatfield,cdata,dt,ttcf_par):
+    """ format the obained result to usable form
+
+    :param CorrelationResult: nametuple containing the results
+    :param qqmask: q mask matrix
+    :param flatfield: flatfield matrix
+    :param cdata: smoothed image matrix
+    :param dt: lat time float
+    :param ttcf_par: number of q for trc integer
+
+    :return: res, save_cf, trc formated cf for ploting, formated matrix for saving and ttime resolved cf
+    """
+    res = []
+    n = 0
+    nframes = CorrelationResult.res[0].size
+    cf = np.zeros((nframes,3),np.float32)
+    cf[:,0] = np.arange(1,nframes+1,1)*dt
+    number_q = qqmask.max()
+    for q in range(1,number_q+1,1):
+        fcorrection = (flatfield[qqmask==q]**2).mean()/flatfield[qqmask==q].mean()**2
+        correction = (cdata[qqmask==q]**2).mean()/cdata[qqmask==q].mean()**2 * fcorrection
+        cf[:,1] = CorrelationResult.res[n,:]/correction # make correct baseline#CPU
+        cf[:,2] = CorrelationResult.dev[n,:]/correction # make correct baseline#CPU
+        if ttcf_par == q:
+            trc = CorrelationResult.trc/correction  
+        cfm = cftomt(cf)
+        res.append(cfm)
+        if q == 1:
+            save_cf = cfm
+        else:
+            save_cf = np.append(save_cf,cfm[:,1:],axis=1)
+        n += 1
+    trc = CorrelationResult.trc
+    return res, save_cf, trc
+      
+
+def save_cf(file_name,save_cf,qp):
+    q_title='#q values 1/A:'
+    for q in qp:
+        q_title = q_title+" %.5f " % q
+    q_title=q_title+'\n'
+    f=open(file_name,'w')
+    f.write(q_title)
+    np.savetxt(f, save_cf)
+    f.close()
+    return
+
+def events(data, mNp):
+    """ convert 3D data matrix to events list
+
+    :param data: 3D data matrix, first axis frame number, second and third axes are image
+    :param mNp: maximum number of photons per frame 
+
+    :return: pixels, s list of pixels and intgrated intensity per frame
+    """
+    #t0 = time.time()
+    s = []
+    pixels = []
+    sshape = np.shape(data)
+    if len(sshape) == 3 :
+       nframes, nx, ny = np.shape(data)
+       nx = nx*ny
+
+       for i in range(nframes):
+            matr = np.ravel(data[i,:,:])
+            msumpix,mpix = eigerpix(matr,mNp,nx) 
+            mpix = mpix[:msumpix]
+            pixels.append(mpix)
+            s.append(msumpix)
+
+    if len(sshape) == 2:   
+        nx, ny = np.shape(data)
+        nx = nx*ny
+        matr = np.ravel(data)
+        msumpix,mpix = eigerpix(matr,mNp,nx) 
+        mpix = mpix[:msumpix]
+        pixels.append(mpix)
+        s.append(msumpix)
+
+    #print("Compaction time %f" % (time.time()-t0))
+
+    return pixels, s 
+
+
+def make_cdata(file_name,config):
+    """ make smooth data
+
+    :param file_name: filename that can contain cdata
+
+    :return: cdata, smooth 2D image for correction
+    """
+    if os.path.isfile(file_name):
+        cdata = np.array(np.load(file_name),np.float32)
+    else:
+        make_q(config)
+        cdata = np.array(np.load(file_name),np.float32)
+    cdata[np.isnan(cdata)] = 0
+
+    return cdata
+
+def read_det_mask(det_mask,detector):
+    """ read detector mask file
+
+    :param det_mask: filename that contains detector mask
+
+    :return: dmask, 2D array of beamstop mask, 1 is masked values
+    """
+    if  det_mask != 'none':
+        try:
+            dmask = np.abs(EdfMethods.loadedf(det_mask))#reads edf and npy
+            dmask[dmask>1] = 1  
+        except:
+            print("Cannot read detector mask %s, skip" % det_mask)
+    else:
+        if detector == 'Andor':
+            dshape=(1024,1024)
+        elif detector == 'maxipix':
+            dshape=(516,516)
+        elif detector == 'eiger500K':
+            dshape=(1024,514)    
+        elif detector == 'eiger4m':
+            dshape=(2162,2068)    
+        else:    
+            print("Needs detector mask file")
+            sys.exit() 
+        dmask = np.zeros(dshape,dtype='uint8')
+    return dmask
+
+def read_qmask(qmask_file,mask, number_q):
+    """ read qmask file 
+
+    :param qmask_file: filename that contains qmask
+    :param mask: detector mask 2D array
+    :param number_q: number of qs in q mask
+
+    :return: qqmask, 2D array of q mask each reqion is 1,2,3...
+    """
+    if qmask_file != 'none':
+        try:
+            qqmask = EdfMethods.loadedf(qmask_file)
+            qqmask[mask>0] = 0
+            qqmask[qqmask>number_q] = 0
+        except:
+            print("Cannot read qmask %s, skip" % qmask_file)
+            qqmask = mask*0
+            qqmask[mask<1] = 1           
+    else:
+        qqmask = mask*0
+        qqmask[mask<1] = 1
+    
+    return qqmask
+
+def read_beamstop_mask(beamstop_mask):
+    """ read beamstop mask file
+
+    :param beamstop_mask: filename that contains beamstop mask
+
+    :return: bmask, 2D array of beamstop mask, 1 is masked values
+    """
+    if  beamstop_mask != 'none':
+        try:
+            bmask = np.abs(EdfMethods.loadedf(beamstop_mask))#reads edf and npy
+            bmask[bmask>1] = 1  
+        except:
+            print("Cannot read beamstop mask %s, skip" % beamstop_mask)
+    else:
+        bmask = 0
+    return bmask
+     
+def reduce_matrix(data,qqmask,cdata,flatfield):
+    """ read beamstop mask file
+
+    :param data: 3D array of frames 
+    :param qqmaks: 2D array of q mask
+    :param cdata: 2D array of smooth data
+    :param flatfield: 2D array of flatfield
+
+    :return: data,qqmask,cdata,flatfield reduced array of original data
+    """
+       
+    ind = np.where(qqmask>0)
+    sindy = ind[0].min()
+    eindy = ind[0].max()
+    sindx = ind[1].min()
+    eindx = ind[1].max()
+    data = data[:,sindy:eindy,sindx:eindx]
+    qqmask = qqmask[sindy:eindy,sindx:eindx]
+    cdata = cdata[sindy:eindy,sindx:eindx]
+    flatfield = flatfield[sindy:eindy,sindx:eindx]
+    print("Reduced data size is %2.2f Gigabytes" % (data.size*data.itemsize/1024**3))
+
+    return data,qqmask,cdata,flatfield
+
+def data_compaction(data):
+    """ compact data for event correlation 
+
+    :param data: 3D array of frames 
+
+    :return: events, times, offsets 
+    """
+    t0 = time.time()
+    events = []
+    times = [] 
+    offsets = [0] 
+    t,x,y = data.shape
+    y =  x*y
+    data = np.reshape(data,(t,y))
+
+    for pix in range(y):
+        ind = np.where(data[:,pix]>0)
+        events.append(data[ind[0],pix])
+        times.append(ind[0])
+        offsets.append(ind[0].size)
+
+    events = np.array(np.concatenate(events).ravel(),np.int8)
+    times = np.array(np.concatenate(times).ravel(),np.int32)
+    offsets = np.array(np.cumsum(offsets),np.uint32)
+    print("Compaction time %f" % (time.time()-t0))
+
+    return events, times, offsets
+

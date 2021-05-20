@@ -69,7 +69,7 @@ kernel void normalize_correlation(
     global uint* my_sum = sums + bin_idx * Nt;
     float corr = 0.0f;
     for (int t = tau; t < Nt; t++) {
-        corr += (my_sum[t] * my_sum[t - tau]);
+        corr += (my_sum[t] * 1.0f * my_sum[t - tau]);
     }
     corr /= scale_factors[bin_idx]; // passing 1/scale_factor in preprocessor is not numerically accurate
     res[bin_idx * Nt + tau] = res_int[bin_idx*Nt + tau] / corr;

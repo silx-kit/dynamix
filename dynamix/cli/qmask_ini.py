@@ -72,7 +72,7 @@ def main():
     flatfield_file = config["detector"]["flatfield"]
     ###################################################################################################################
     import pylab as plt
-
+    print("Making qs")
     try:
         data = readdata.readnpz(savdir+sname+"_2D.npz")
     except:
@@ -141,7 +141,7 @@ def main():
       n += 1
       indq = np.where(np.abs(r_q-i)<=width_q/2)
       qmask[indq] = n
-
+      print("Number of pixels per q %d %d" % (n,qmask[indq].size))
     qmask[mask>0] = 0
     np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
     qmask[qmask>number_q] = 0
