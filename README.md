@@ -22,7 +22,6 @@ All correlators compute the function `g_2`, although through different means.
 dynamix depends on the following python packages:
 
   - numpy
-  - numba
   - pyopencl
   - [silx](https://github.com/silx-kit/silx)
 
