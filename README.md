@@ -23,7 +23,7 @@ dynamix depends on the following python packages:
 
   - numpy
   - numba
-  - pyopencl
+  - pyopencl 2021.1.6
   - [silx](https://github.com/silx-kit/silx)
 
 Optionally:
