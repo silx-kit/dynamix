@@ -292,20 +292,43 @@ def id10_eiger4m_event_GPU_dataf(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     return evs,tms,cnt,afr,n_frames,mask,trace
 
 @nb.jit(nopython=True, parallel=True, fastmath=True)
-def neigercompress(evs,tms,cnt,afr,m,tr,fr,thr,i,ll,max_e):
+def neigercompress(evs,tms,cnt,afr,m,tr,fr,thr,i,ll):
+    """
+    Numba implementation 
+    Compact one frame:
+
+    :param evs: 2D array (Number_of_pixels,Number_of_frames_with_events) of events containing all the nonzero data values
+    :param tms: 2D array (Number_of_pixels,Number_of_frames_with_events) of time indices corresponding to nonzero data values
+    :param cnt: 1D array (Number_of_pixels) of counts of number of frames with events in a pixel
+    :param afr: 1D array (Number_of_pixels) of total number of events per pixel
+    :param m:   1D array (Number_of_pixels) of masked pixels
+    :param tr:  int number of photons per frame
+    :param fr: 1D array (Number_of_pixels) of detector frame to compact
+    :param thr: int upper threshold for photon count in a pixel (20)
+    :param i:  int frame number
+    :param ll: int number of pixels in a detector frame
+   
+    :return: evs, tms, cnt, afr, m, tr 
+    : evs: updated 2D array (Number_of_pixels,Number_of_frames_with_events) of events containing all the nonzero data values
+    : tms: updated 2D array (Number_of_pixels,Number_of_frames_with_events) of time indices corresponding to nonzero data values
+    : cnt: updated 1D array (Number_of_pixels) of counts of number of frames with events in a pixel
+    : afr: updated 1D array (Number_of_pixels) of total number of events per pixel
+    : m:   updated 1D array (Number_of_pixels) of masked pixels
+    : tr:  int number of photons per frame for trace 
+    """
     tr = 0
     for p in nb.prange(ll):
         if fr[p]>0:
             afr[p] += fr[p]
             if fr[p]>thr:
                 m[p] = 1
-            if m[p]<1:
+            elif m[p]<1:
                c = cnt[p] + 1
                evs[p,c] = fr[p]
                tms[p,c] = i
                cnt[p] = c          
                tr += fr[p]
-    return evs,tms,cnt,afr,m,tr       
+    return evs,tms,cnt,afr,m,tr      
 
 @nb.jit(nopython=True, fastmath=True)
 def nprepare(evs,tms):
@@ -357,7 +380,7 @@ def id10_eiger4m_event_GPU_datan(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     it = 0    
     for i in range(nf1,nf2,1):
         fr = np.ravel(data[i,:,:])
-        evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,tr,fr,thr,it,ll,lp)
+        evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,tr,fr,thr,it,ll)
         trace[i] = tr
         it += 1 
     f.close()
