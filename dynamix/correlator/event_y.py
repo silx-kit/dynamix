@@ -87,6 +87,7 @@ def ncorrelatepm(evs,tms,cnt,q,n_frames,nproc):
                 for j in range(cnt[i]):
                     t0 = tms[k]
                     if t0 >= tstep * proc and t0 < tstep * (proc+1):
+                    #if t0 % nproc == proc:
                         n = k+1
                         mint[qp,t0] += evs[k]
                         for f in range(j+1,cnt[i],1):
