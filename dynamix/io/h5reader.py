@@ -295,17 +295,16 @@ def id10_eiger4m_event_GPU_dataf(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
 def neigercompress(evs,tms,cnt,afr,m,tr,fr,thr,i,ll,max_e):
     tr = 0
     for p in nb.prange(ll):
-        afr[p] += fr[p]
-        if fr[p]>thr:
-            m[p] = 1
-        if m[p]>0:
-           fr[p] = 0
         if fr[p]>0:
-           c = cnt[p] + 1
-           evs[p,c] = fr[p]
-           tms[p,c] = i
-           cnt[p] = c          
-        tr += fr[p]
+            afr[p] += fr[p]
+            if fr[p]>thr:
+                m[p] = 1
+            if m[p]<1:
+               c = cnt[p] + 1
+               evs[p,c] = fr[p]
+               tms[p,c] = i
+               cnt[p] = c          
+               tr += fr[p]
     return evs,tms,cnt,afr,m,tr       
 
 @nb.jit(nopython=True, fastmath=True)
