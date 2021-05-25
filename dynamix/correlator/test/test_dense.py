@@ -35,9 +35,10 @@ from time import time
 import logging
 import unittest
 import numpy as np
+from silx.opencl.common import ocl
 from dynamix.test.utils import XPCSDataset
 from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator
-from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator, CUFFT
+from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator, CUFFT, cublas
 
 # logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -98,6 +99,8 @@ class TestDense(unittest.TestCase):
             )
 
     def test_dense_correlator(self):
+        if ocl is None:
+            self.skipTest("Need pyopencl and a working OpenCL device")
         self.correlator = DenseCorrelator(
             self.shape,
             self.nframes,
@@ -124,6 +127,8 @@ class TestDense(unittest.TestCase):
 
 
     def test_cuda_matmul_correlator(self):
+        if cublas is None:
+            self.skipTest("Need scikit-cuda for this test")
         correlator = CublasMatMulCorrelator(
             self.shape, self.nframes, self.dataset.qmask
         )
