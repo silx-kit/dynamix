@@ -13,7 +13,7 @@ from collections import namedtuple
 
 import os
 import psutil
-nproc = psutil.cpu_count(logical=True)#len(os.sched_getaffinity(0)) * psutil.cpu_count(logical=False) // psutil.cpu_count(logical=True) 
+nproc = psutil.cpu_count(logical=True)-2#len(os.sched_getaffinity(0)) * psutil.cpu_count(logical=False) // psutil.cpu_count(logical=True) 
 
 CorrelationResult = namedtuple("CorrelationResult", "res dev trc")
 
