@@ -336,7 +336,7 @@ def get_eiger_event_datan(datdir,prefd,sufd,nf1,nf2,sname,mNp,savdir,mask_file,t
         except: 
             pass
         fr = np.ravel(matr)
-        evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,tr,fr,thr,it,ll,lp)
+        evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,tr,fr,thr,it,ll)
         trace[i] = tr 
         it += 1
  
@@ -351,9 +351,8 @@ def get_eiger_event_datan(datdir,prefd,sufd,nf1,nf2,sname,mNp,savdir,mask_file,t
     afr = afr/n_frames
     afr = np.reshape(afr,(nx,ny))
     mask = np.reshape(mask,(nx,ny))
-    evs,tms,c = nprepare(np.ravel(evs),np.ravel(tms))
-    evs = np.array(evs[:c],np.int8)
-    tms = tms[:c]
+    evs,tms = nprepare(np.ravel(evs),np.ravel(tms))
+    evs = np.array(evs,np.int8)
     print("Reading time %3.3f sec" % (time.time()-t0))
     return evs,tms,cnt,afr,n_frames,mask,trace
 
@@ -440,9 +439,8 @@ def get_ccd_event_datan(datdir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU
     afr = afr/n_frames
     afr = np.reshape(afr,(nx,ny))
     mask = np.reshape(mask,(nx,ny))
-    evs,tms,c = nprepare(np.ravel(evs),np.ravel(tms))
-    evs = np.array(evs[:c],np.int8)
-    tms = tms[:c]
+    evs,tms = nprepare(np.ravel(evs),np.ravel(tms))
+    evs = np.array(evs,np.int8)
     print("Reading time %3.3f sec" % (time.time()-t0))
     return evs,tms,cnt,afr,n_frames,mask,trace
 
@@ -489,6 +487,18 @@ def neigercompress(evs,tms,cnt,afr,m,tr,fr,thr,i,ll):
 
 @nb.jit(nopython=True, fastmath=True)
 def nprepare(evs,tms):
+    """
+    Numba implementation 
+    Eliminate 0 velues:
+
+    :param evs: 1D array (Number_of_pixels*Number_of_frames_with_events) of events containing all the nonzero data values
+    :param tms: 1D array (Number_of_pixels*Number_of_frames_with_events) of time indices corresponding to nonzero data values
+    
+   
+    :return: evs, tms
+    : evs: updated 1D array (Number_of_pixels*Number_of_frames_with_events) of events containing all the nonzero data values
+    : tms: updated 1D array (Number_of_pixels,Number_of_frames_with_events) of time indices corresponding to nonzero data values
+    """
     ll = evs.size
     i = 0 
     for p in range(ll):
@@ -496,4 +506,4 @@ def nprepare(evs,tms):
             evs[i] = evs[p]
             tms[i] = tms[p]
             i += 1
-    return evs,tms,i
+    return evs[:i],tms[:i]
