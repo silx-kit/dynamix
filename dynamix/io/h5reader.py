@@ -292,7 +292,7 @@ def id10_eiger4m_event_GPU_dataf(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     return evs,tms,cnt,afr,n_frames,mask,trace
 
 @nb.jit(nopython=True, parallel=True, fastmath=True)
-def neigercompress(evs,tms,cnt,afr,m,tr,fr,thr,i,ll):
+def neigercompress(evs,tms,cnt,afr,m,fr,thr,i,ll):
     """
     Numba implementation 
     Compact one frame:
@@ -302,7 +302,6 @@ def neigercompress(evs,tms,cnt,afr,m,tr,fr,thr,i,ll):
     :param cnt: 1D array (Number_of_pixels) of counts of number of frames with events in a pixel
     :param afr: 1D array (Number_of_pixels) of total number of events per pixel
     :param m:   1D array (Number_of_pixels) of masked pixels
-    :param tr:  int number of photons per frame
     :param fr: 1D array (Number_of_pixels) of detector frame to compact
     :param thr: int upper threshold for photon count in a pixel (20)
     :param i:  int frame number
@@ -387,12 +386,11 @@ def id10_eiger4m_event_GPU_datan(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     tms = np.zeros((ll,lp),np.uint16)
     cnt = np.ravel(np.zeros((ll,),np.uint16))
     afr = np.ravel(np.zeros((ll,),np.uint32))
-    tr = 0
     trace = np.zeros((n_frames,),np.uint32)
     it = 0    
     for i in range(nf1,nf2,1):
         fr = np.ravel(data[i,:,:])
-        evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,tr,fr,thr,it,ll)
+        evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,fr,thr,it,ll)
         trace[i] = tr
         it += 1 
     f.close()
