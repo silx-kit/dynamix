@@ -80,6 +80,10 @@ result = correlator.correlate(data)
 
 This is the basic (and slowest) correlator. Please refer to the documentation to use other backends.
 
+## To do 
+
+Introduce error calculation and two time correlation function for GPU correlators
+
 ## Question ? Bug ?
 
 Please [open an issue](https://github.com/silx-kit/dynamix/issues) on the project page to report bugs or ask questions.
