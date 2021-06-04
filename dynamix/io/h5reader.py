@@ -94,10 +94,18 @@ def myreader(fileName,nf1,nf2,scan="none"):
     print("Read a NeXus HDF5 file")
     if scan=="none":
         #data = f.get('/entry_0000/measurement/data')
-        data = f['/entry_0000/measurement/data']
+        fdata = f['/entry_0000/measurement/data']
     else:
-        data = f['/'+scan+'.1/measurement/eiger4m']
-    data = numpy.array(data[nf1:nf2,:,:],numpy.int8)
+        fdata = f['/'+scan+'.1/measurement/eiger4m']
+    
+    fshape = fdata.shape       
+    data = numpy.zeros((nf2-nf1,fshape[1],fshape[2]),numpy.uint8)
+    print("Data shape", data.shape)
+    n = 0
+    for i in range(nf1,nf2,1):
+        data[n,:,:] = numpy.array(fdata[i,:,:],numpy.uint8)
+        n += 1
+    #data = numpy.array(data[nf1:nf2,:,:])#,numpy.int8)
     #data = numpy.array(data)
 
     f.close()
@@ -291,6 +299,7 @@ def id10_eiger4m_event_GPU_dataf(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     print("Reading time %3.3f sec" % (time.time()-t0))
     return evs,tms,cnt,afr,n_frames,mask,trace
 
+
 @nb.jit(nopython=True, parallel=True, fastmath=True)
 def neigercompress(evs,tms,cnt,afr,m,fr,thr,i,ll):
     """
@@ -327,7 +336,8 @@ def neigercompress(evs,tms,cnt,afr,m,fr,thr,i,ll):
                tms[p,c] = i
                cnt[p] = c          
                tr += fr[p]
-    return evs,tms,cnt,afr,m,tr      
+    return evs,tms,cnt,afr,m,tr   
+
 
 @nb.jit(nopython=True, fastmath=True)
 def nprepare(evs,tms):
