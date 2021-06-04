@@ -151,7 +151,7 @@ def nbecorrts_q(events,times,cnt,qqmask, n_frames, calc_std=False, ttcf_par=0):
                 trc += np.rot90(np.fliplr(trc))
             tmp = np.diag(trc,k=1)
             tmp = np.mean(tmp[tmp>0])
-            for j in range(n_frames-1):
+            for j in range(n_frames):
                trc[j,j]=tmp   
             del tmp
 
@@ -222,7 +222,7 @@ def ecorrts_q(pixels,s,qqmask, calc_std=False, ttcf_par=0):
             trc = cor/norm
             tmp = np.diag(trc,k=1)
             tmp = np.mean(tmp[tmp>0])
-            for j in range(lpixels-1):
+            for j in range(lpixels):
                trc[j,j]=tmp   
             del tmp
     print("Total correlation time %2.2f sec" % (time.time()-t0))

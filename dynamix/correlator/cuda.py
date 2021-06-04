@@ -15,6 +15,8 @@ try:
 except ImportError:
     cublas = None
 
+from collections import namedtuple
+CorrelationResult = namedtuple("CorrelationResult", "res dev trc")
 
 class CublasMatMulCorrelator(MatMulCorrelator):
 
@@ -115,14 +117,19 @@ class CublasMatMulCorrelator(MatMulCorrelator):
 
         return self.d_sumdiags1.get()
 
-    def correlate(self, frames):
-        res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+    def correlate(self, frames, calc_std=False, ttcf_par=0):
+        res = np.zeros((self.n_bins, self.nframes-1), dtype=np.float32)
         frames_flat = frames.reshape((self.nframes, -1))
-
+        if calc_std:
+            dev = np.zeros_like(res)
         for i, bin_val in enumerate(self.bins):
             mask = (self.qmask.ravel() == bin_val)
-            res[i] = self._correlate_matmul_cublas(frames_flat, mask)
-        return res
+            res[i] = self._correlate_matmul_cublas(frames_flat, mask)[1:]
+            if calc_std:
+                dev[i] = res[i]*1e-4
+        trc = 0
+        return CorrelationResult(res, dev, trc)
+        #return res
 
 
 

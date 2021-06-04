@@ -1,5 +1,3 @@
-from math import sqrt
-from collections import namedtuple
 import numpy as np
 import pyopencl.array as parray
 from os import path
@@ -26,13 +24,12 @@ except ImportError:
 
 NCPU = cpu_count()
 
-CorrelationResult = namedtuple("CorrelationResult", "res dev")
+from collections import namedtuple
+CorrelationResult = namedtuple("CorrelationResult", "res dev trc")
 
-
-def py_dense_correlator(xpcs_data, mask, calc_std=False):
+def py_dense_correlator(xpcs_data, mask, calc_std=False, ttcf_par=0):
     """
     Reference implementation of the dense correlator.
-
     Parameters
     -----------
     xpcs_data: numpy.ndarray
@@ -51,23 +48,30 @@ def py_dense_correlator(xpcs_data, mask, calc_std=False):
     ltimes, lenmatr = np.shape(xpcs_data)  # n_tau, n_pix
     meanmatr.shape = 1, ltimes
 
-    num = np.dot(xpcs_data, xpcs_data.T)
+    num = np.dot(xpcs_data, xpcs_data.T) / lenmatr
     denom = np.dot(meanmatr.T, meanmatr)
 
-    res = np.zeros(ltimes)  # was ones()
+    res = np.zeros(ltimes-1)  # was ones()
     if calc_std:
         dev = np.zeros_like(res)
 
-    for i in range(ltimes):  # was ltimes-1, so res[-1] was always 1 !
-        dia_n = np.diag(num, k=i) / lenmatr
+    for i in range(1,ltimes):  # was ltimes-1, so res[-1] was always 1 !
+        dia_n = np.diag(num, k=i) 
         dia_d = np.diag(denom, k=i)
-        res[i] = np.sum(dia_n) / np.sum(dia_d)
+        res[i-1] = np.sum(dia_n) / np.sum(dia_d)
         if calc_std:
-            dev[i] = np.std(dia_n / dia_d) / sqrt(len(dia_d))
-    if calc_std:
-        return CorrelationResult(res, dev)
+            dev[i-1] = np.std(dia_n / dia_d) / np.sqrt(len(dia_d))
+    if ttcf_par>0:
+        trc = num/denom
+        tmp = np.diag(trc,k=1)
+        tmp = np.mean(tmp[tmp>0])
+        for j in range(ltimes):
+           trc[j,j]=tmp   
+        del tmp
     else:
-        return res
+        trc = 0
+    return CorrelationResult(res, dev, trc)
+
 
 def y_dense_correlator(xpcs_data, mask):
     """
@@ -125,35 +129,27 @@ class MatMulCorrelator(BaseCorrelator):
         super().__init__()
         super()._set_parameters(shape, nframes, qmask, scale_factor, extra_options)
 
-<<<<<<< HEAD
-
-    def correlate(self, frames):
-        #res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
-        res = []
-        for i, bin_value in enumerate(self.bins):
-            mask = (self.qmask == bin_value)
-            #res[i] = py_dense_correlator(frames, mask)
-            res.append(y_dense_correlator(frames, mask))#errorbars included 
-        return res
-
-
-=======
-    def correlate(self, frames, calc_std=False):
-        res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
+    def correlate(self, frames, calc_std=False, ttcf_par=0):
+        res = np.zeros((self.n_bins, self.nframes-1), dtype=np.float32)
         if calc_std:
             dev = np.zeros_like(res)
         for i, bin_value in enumerate(self.bins):
             mask = (self.qmask == bin_value)
-            tmp = py_dense_correlator(frames, mask, calc_std)
+            if ttcf_par == bin_value:
+                tmp = py_dense_correlator(frames, mask, calc_std,ttcf_par)
+                trc = tmp[2]
+            else: 
+                tmp = py_dense_correlator(frames, mask, calc_std)
             if calc_std:
-                res[i], dev[i] = tmp
+                res[i], dev[i] = tmp[0], tmp[1]
             else:
-                res[i] = tmp
-        if calc_std:
-            return CorrelationResult(res, dev)
-        else:
-            return res
->>>>>>> d1b6d77f254f6e49ae5ec24e47538a5f707e7d42
+                res[i] = tmp  
+        if ttcf_par == 0:
+            trc = 0                   
+        return CorrelationResult(res, dev, trc)
+
+
+
 
 
 class DenseCorrelator(OpenclCorrelator):
@@ -180,6 +176,7 @@ class DenseCorrelator(OpenclCorrelator):
         self._setup_kernels()
         self._allocate_arrays()
 
+
     def _setup_kernels(self):
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
@@ -190,7 +187,7 @@ class DenseCorrelator(OpenclCorrelator):
                 "-DDTYPE=%s" % self.c_dtype,
                 "-DDTYPE_SUMS=%s" % self.c_sums_dtype,
                 "-DN_FRAMES=%d" % self.nframes,
-                "-DUSE_SHARED=%d" % 0,  # <
+                "-DUSE_SHARED=%d" % 0, # <
                 "-DSUM_WG_SIZE=%d" % min(1024, nextpow2(self.shape[1])),
             ]
         )
@@ -203,10 +200,11 @@ class DenseCorrelator(OpenclCorrelator):
         self.sums_kernel = self.kernels.get_kernel("compute_sums_dense")
         self.corr1D_kernel = self.kernels.get_kernel("correlate_1D")
 
+
     def _allocate_arrays(self):
         self.d_frames = parray.zeros(
             self.queue,
-            (self.nframes,) + self.shape,
+            (self.nframes, ) + self.shape,
             self.dtype
         )
         self._old_d_frames = None
@@ -226,6 +224,7 @@ class DenseCorrelator(OpenclCorrelator):
             np.float32
         )
 
+
     def _normalize_sums(self):
         if self.n_bins == 0:
             self.d_sums_f[:] *= self.scale_factors[0]
@@ -233,6 +232,7 @@ class DenseCorrelator(OpenclCorrelator):
             for i, factor in enumerate(self.scale_factors.values()):
                 self.d_sums_f[i] /= np.array([factor], dtype=self.output_dtype)[0]
         self.d_sums_f.finish()
+
 
     def correlate(self, frames):
         self._set_data({"frames": frames})
@@ -259,7 +259,8 @@ class DenseCorrelator(OpenclCorrelator):
 
         self._reset_arrays(["frames"])
 
-        return self.d_output.get()  # get ?
+        return self.d_output.get() # get ?
+
 
     def _sum_frames(self):
         evt = self.sums_kernel(
@@ -275,6 +276,7 @@ class DenseCorrelator(OpenclCorrelator):
         evt.wait()
         self.profile_add(evt, "Sum kernel")
 
+
     def _correlate_1d(self):
         evt = self.corr1D_kernel(
             self.queue,
@@ -287,8 +289,11 @@ class DenseCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Corr 1D kernel")
 
 
-class FFTCorrelator(BaseCorrelator):
 
+
+
+
+class FFTCorrelator(BaseCorrelator):
     def __init__(self, shape, nframes,
                  qmask=None,
                  weights=None,
@@ -337,8 +342,9 @@ class FFTCorrelator(BaseCorrelator):
         return res
 
 
-class FFTWCorrelator(FFTCorrelator):
 
+
+class FFTWCorrelator(FFTCorrelator):
     def __init__(self, shape, nframes,
                  qmask=None,
                  weights=None,
@@ -376,12 +382,13 @@ class FFTWCorrelator(FFTCorrelator):
         f_out1 *= f_out2
         num = fftw_plan.ifft(f_out1)
 
-        num = num.sum(axis=0)[self.nframes - 1:self.nframes - 1 + self.nframes]
+        num = num.sum(axis=0)[self.nframes-1:self.nframes-1 + self.nframes]
         sums = frames_flat.sum(axis=1)
-        denom = np.correlate(sums, sums, "full")[sums.size - 1:] / npix
+        denom = np.correlate(sums, sums, "full")[sums.size-1:] / npix
 
-        res = num / denom
+        res = num/denom
         return res
+
 
 
 def export_wisdom(basedir):
@@ -391,13 +398,13 @@ def export_wisdom(basedir):
         with open(fname, "wb") as fid:
             fid.write(w[i])
 
-
 def import_wisdom(basedir):
     w = []
-    for i in range(3):  # always 3 ?
+    for i in range(3): # always 3 ?
         fname = path.join(basedir, "wis%d.dat" % i)
         if not(path.isfile(fname)):
             raise RuntimeError("Could find wisdom file %s" % fname)
         with open(fname, "rb") as fid:
             w.append(fid.read())
     pyfftw.import_wisdom(w)
+
