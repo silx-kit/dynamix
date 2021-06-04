@@ -82,7 +82,7 @@ This is the basic (and slowest) correlator. Please refer to the documentation to
 
 ## To do 
 
-Introduce error calculation and two time correlation function for GPU correlators
+Introduce error calculation and two time correlation function for GPU correlators.
 
 ## Question ? Bug ?
 
