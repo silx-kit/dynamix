@@ -342,7 +342,8 @@ def format_result(CorrelationResult,qqmask,flatfield,cdata,dt,ttcf_par):
         else:
             save_cf = np.append(save_cf,cfm[:,1:],axis=1)
         n += 1
-    trc = CorrelationResult.trc
+    if ttcf_par == 0:    
+        trc = CorrelationResult.trc
     return res, save_cf, trc
       
 
