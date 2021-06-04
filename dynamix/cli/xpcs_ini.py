@@ -330,10 +330,10 @@ def main():
 
         ##### read data ##########################################
         if sufd.find("edf") > -1:#== ".edf":
-            data = readdata.get_data(sample_dir,prefd,sufd,nf1,nf2)#[:3000,:,:]
+            data = readdata.get_data(sample_dir,prefd,sufd,nf1,nf2)
         elif sufd == ".h5":
-            data = h5reader.myreader(sample_dir+prefd+sufd)[nf1:nf2,:,:]
-            data = np.array(data,np.uint8)
+            data = h5reader.myreader(sample_dir+prefd+sufd,nf1,nf2)
+            #data = np.array(data,np.uint16)
             
         else:
             exit()
@@ -382,12 +382,30 @@ def main():
 
         #### reduce the matrix size to speed up calculations ####
         data,qqmask,cdata,flatfield = tools.reduce_matrix(data,qqmask,cdata,flatfield)
-
-
+     
         shape = np.shape(data[0,:,:])
         nframes = np.shape(data)[0]
         print("Number of frames %d" % nframes)
         print("Number of qs %d" % number_q)
+
+        #### calculate trace ####
+        trace = np.zeros((nframes,number_q),np.float32)
+        n = 0
+        for q in range(1,number_q+1,1):
+            trace[:,n] =  np.sum(data[:,qqmask==q],1)
+            n +=1 
+            
+        ### save trace  ####
+        qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q) 
+        q_title='#q values 1/A:'
+        for q in qp:
+            q_title = q_title+" %.5f " % q
+        q_title=q_title+'\n'
+        f=open(savdir+sname+"_trace.dat",'w')
+        f.write(q_title)
+        np.savetxt(f, trace)
+        f.close()
+
         ### correlator #######
         t0 = time.time()
 
@@ -398,9 +416,41 @@ def main():
             correlator = CublasMatMulCorrelator(shape, nframes, qmask=qqmask)
 
         t1 = time.time()
-        result = correlator.correlate(data)
+        #result = correlator.correlate(data,calc_std=True)
+        CorrelationResult = correlator.correlate(data,True,ttcf_par)
         print("Correlator time %3.2f seconds" % (time.time()-t1))
+ 
+        ### format result #######
+        res, save_cf, trc = tools.format_result(CorrelationResult,qqmask,flatfield,cdata,dt,ttcf_par)
 
+        ### save cf ##############   
+        qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q)     
+        tools.save_cf(savdir+sname+"_cf.dat",save_cf,qp)
+
+
+        #### plot results #######
+        if toplot =="yes":
+            try:
+                plot_cf(res,sname)
+            except: pass
+
+        print("Saving trc")
+        try:
+            if trc.size>1:
+                readdata.savenpz(savdir+sname+"_trc.npz",np.array(trc,np.float32))
+        except: pass
+
+        if toplot =="yes":
+            try:
+                print("Ploting trc, please wait")
+                show_trc(trc,sname,savdir)
+            except: pass
+    else: pass
+    sys.exit()
+"""
+        input("press enter")
+        sys.exit()      
+        ##########################################################################
         trace = np.zeros((nframes,number_q),np.float32)
         res = []
         n = 0
@@ -408,8 +458,8 @@ def main():
         cf[:,0] = np.arange(1,nframes,1)*dt
         for q in range(1,number_q+1,1):
             trace[:,n] =  np.sum(data[:,qqmask==q],1)
-            fcorrection = (flatfield[qqmask==q]**2).mean()/flatfield[qqmask==q].mean()**2
-            correction = (cdata[qqmask==q]**2).mean()/cdata[qqmask==q].mean()**2 * fcorrection
+            #fcorrection = (flatfield[qqmask==q]**2).mean()/flatfield[qqmask==q].mean()**2
+            correction = (cdata[qqmask==q]**2).mean()/cdata[qqmask==q].mean()**2# * fcorrection
             if engine == "GPU":
                 cf[:,1] = result[n][1:]/correction#GPU
                 cf[:,2] = result[n][1:]/correction*1e-4#GPU
@@ -424,6 +474,7 @@ def main():
                 save_cf = cfm
             else:
                 save_cf = np.append(save_cf,cfm[:,1:],axis=1)
+            print(n)
             n += 1
 
         print("Correlation time %3.2f seconds" % (time.time()-t0))
@@ -455,16 +506,7 @@ def main():
                 show_trc(trc,sname,savdir)
             except: pass
 
-
-    else: pass
-    exit()
-
-
-    ############ plotting ############################
-    from dynamix.plot.draw_result import plot_cf, show_trc
-
-    plot_cf(w,sname)
-    show_trc(t,sname)
+"""
 
 
 
