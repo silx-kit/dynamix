@@ -7,7 +7,7 @@ plt.rc('savefig', directory='') # leave directory empty to use current working d
 plt.rcParams['image.cmap'] = 'jet'
 plt.rcParams['font.size'] = 14
 
-def plot_cf(xx,sname=''):
+def plot_cf(xx,sname='',toplot="no"):
     max_y = 0
     n = 1
     plt.figure()
@@ -35,9 +35,10 @@ def plot_cf(xx,sname=''):
         plt.legend(loc=1,fontsize=10)
     plt.title(sname)
     plt.tight_layout()
-    plt.show()
+    if toplot == "yes":
+        plt.show()
 
-def show_trc(cor,sname='',savdir="./"):
+def show_trc(cor,sname='',savdir="./",toplot="no"):
     plt.figure()
     nx,ny = cor.shape
     #vvmax = np.diag(cor,k=8)
@@ -57,4 +58,5 @@ def show_trc(cor,sname='',savdir="./"):
     plt.ylabel('frame')
     plt.tight_layout()
     plt.savefig(savdir+sname+"_trc.png",dpi=300)
-    plt.show() 
+    if toplot == "yes":
+        plt.show()
