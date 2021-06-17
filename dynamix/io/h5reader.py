@@ -300,7 +300,7 @@ def id10_eiger4m_event_GPU_dataf(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     return evs,tms,cnt,afr,n_frames,mask,trace
 
 
-@nb.jit(nopython=True, parallel=True, fastmath=True)
+@nb.jit(nopython=True, parallel=True)
 def neigercompress(evs,tms,cnt,afr,m,fr,thr,i,ll):
     """
     Numba implementation 
@@ -331,15 +331,17 @@ def neigercompress(evs,tms,cnt,afr,m,fr,thr,i,ll):
             if fr[p]>thr:
                 m[p] = 1
             elif m[p]<1:
-               c = cnt[p] + 1
+               cnt[p] += 1  
+               c = cnt[p]
+               #c = cnt[p] + 1
                evs[p,c] = fr[p]
                tms[p,c] = i
-               cnt[p] = c          
+               #cnt[p] = c          
                tr += fr[p]
     return evs,tms,cnt,afr,m,tr   
 
 
-@nb.jit(nopython=True, fastmath=True)
+@nb.jit(nopython=True)
 def nprepare(evs,tms):
     """
     Numba implementation 
@@ -390,10 +392,10 @@ def id10_eiger4m_event_GPU_datan(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     print("Number of frames %d" % n_frames)
     print("Data size in MB %d" % (n_frames*nx*ny*4/1024**2))
     ll = nx*ny # total number of pixels
-    lp = int(n_frames*frc) # total number of frames with events 15%
+    max_e = 1000#int(n_frames*frc) # total number of frames with events 15%
     mask = np.array(np.ravel(mask),np.uint8)
-    evs = np.zeros((ll,lp),np.uint8)
-    tms = np.zeros((ll,lp),np.uint16)
+    evs = np.zeros((ll,max_e),np.uint8)
+    tms = np.zeros((ll,max_e),np.uint16)
     cnt = np.ravel(np.zeros((ll,),np.uint16))
     afr = np.ravel(np.zeros((ll,),np.uint32))
     trace = np.zeros((n_frames,),np.uint32)
@@ -401,8 +403,15 @@ def id10_eiger4m_event_GPU_datan(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
     for i in range(nf1,nf2,1):
         fr = np.ravel(data[i,:,:])
         evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,fr,thr,it,ll)
-        trace[i] = tr
-        it += 1 
+        trace[it] = tr
+        if it == max_e:
+            nmax_e = int(1.1*n_frames*cnt.max()/max_e)
+            if nmax_e > max_e+10:
+                evs = np.concatenate((evs,np.zeros((ll,nmax_e-max_e),np.uint8)),axis=1)
+                tms = np.concatenate((tms,np.zeros((ll,nmax_e-max_e),np.uint16)),axis=1)
+                max_e = nmax_e+0
+                print("Extend array size to %d" % max_e)
+        it += 1
     f.close()
     afr = afr/n_frames
     afr = np.reshape(afr,(nx,ny))
