@@ -1,0 +1,52 @@
+#Config file for XPCS analysis
+
+[sample_description]
+name = test
+scan = scan0004
+composition = Pt1
+temperature = 250C
+
+[data_location]
+data_dir = /data/id10/inhouse/21run2/blc12870/id10/
+sample_dir = ${data_dir}test/test_0001/
+data_prefix = test_0001
+data_sufix = .h5
+first_file = 0
+last_file = 2000
+dark_dir = /data/id10/inhouse/extraspace/17run2/IHR_WAXS/dark/dark3s/
+dark_prefix = img_
+first_dark = 1
+last_dark = 100
+result_dir =/data/id10/inhouse/21run2/blc12870/analysis/${sample_description:name}/${sample_description:scan}/
+toplot = yes
+
+[exp_setup]
+geometry = WAXS
+wavelength = 0.5722
+detector_distance = 5.0
+lagtime = 0.01
+firstq = 2.79
+widthq = 0.08
+stepq  = 0.08
+numberq = 3
+q_mask = /data/id10/inhouse/21run2/blc12870/analysis/test/test_qmask.npy
+beamstop_mask = /data/id10/inhouse/21run2/blc12870/analysis/scripts/bmask_test.npy
+dbx = 18887
+dby = 1024
+
+[correlator]
+method = event
+engine = CPU
+low_threshold = 50
+bottom_ADU = 1410
+top_ADU = 2100
+photon_ADU = 1958
+max_number = 60000
+ttcf = 2
+
+
+[detector]
+det_name = eiger4M
+pixels = 75.0e-6
+mask = /data/id10/inhouse/21run2/blc12870/analysis/eiger4m_mask_waxpcs.edf
+flatfield = none
