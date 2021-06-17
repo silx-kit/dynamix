@@ -129,6 +129,10 @@ def main():
     mask_file = config["detector"]["mask"]
     flatfield_file = config["detector"]["flatfield"]
     
+    ### compaction paramaters ######################################
+    fr = 0.4 # fraction of frames with events 
+    #small number of events fr should be small
+    phthr = 5 # max photon cutoff threshold 
     
     #### check if the saving direftory exist and create one #####
     tools.test_dir(savdir)
@@ -140,7 +144,7 @@ def main():
     ###############################################################################################
     from dynamix.plot.draw_result import plot_cf, show_trc
     import pylab as plt
-    print("Start analysis of the sample %s" % sname)
+    print("Start analysis of the sample %s Scan number=%s" % (sname,str(scan)))
     print("Running %s correlator using %s processor." % (correlator, engine))
 
     if correlator == "event":
@@ -164,12 +168,12 @@ def main():
         qqmask[mask>0] = 0
 
         #### read and dropletize data ####
-        if detector == "Andor":
+        if detector == "andor":
             #pixels - list of pixels that see a photon
             #s - sum of all photons in a frame
             #for_norm - number of pixels used
             #img - summed 2D scattering pattern
-            print("Detector Andor")
+            print("Detector andor")
             #get the delta value from the tenth image to adjust cx position and first_q
             delta = readdata.get_delta(sample_dir,prefd,sufd,nf1,nf2)
             cx = int(cx-distance*np.tan(np.deg2rad(delta))/pix_size)
@@ -178,7 +182,7 @@ def main():
             if engine == "CPUold": 
                 pixels, s, for_norm, img =      readdata.get_ccd_event_data(sample_dir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU,tADU,mNp,aduph,savdir,mask_file)
             else:
-                events, times, counter, img, nframes, mask, trace = readdata.get_ccd_event_datan(sample_dir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU,tADU,mNp,aduph,savdir,mask_file,20,0.33)
+                events, times, counter, img, nframes, mask, trace = readdata.get_ccd_event_datan(sample_dir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU,tADU,mNp,aduph,savdir,mask_file,20,fr)
                 if engine == "GPU":
                     times = np.array(times,np.int32)
                     offsets = np.cumsum(counter, dtype=np.uint32)
@@ -209,7 +213,7 @@ def main():
             #    print("Diagnostics maximum photons per frame %d" % (mNp-10))
             #    pixels, s = tools.events(data, mNp) 
             if engine == "CPU":
-                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,nf1,nf2,mask,scan,20,0.33)
+                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,nf1,nf2,mask,scan,phthr,fr)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
                 t0 = time.time()
                 qqmask[mask>0] = 0
@@ -221,7 +225,7 @@ def main():
                 print("Counter", counter.shape,counter.dtype,counter.nbytes//1024**2)
                 print("Preprocessing time %f" % (time.time()-t0))
             if engine == "GPU":
-                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,nf1,nf2,mask,scan,20,0.33)
+                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,nf1,nf2,mask,scan,phthr,fr)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
                 t0 = time.time()
                 qqmask[mask>0] = 0
@@ -247,7 +251,7 @@ def main():
             if engine == "CPUold":
                 pixels, s, for_norm, img = readdata.get_eiger_event_data(sample_dir,prefd,sufd,nf1,nf2,sname,mNp,savdir,mask_file)
             else:
-                events, times, counter, img, nframes, mask, trace = readdata.get_eiger_event_datan(sample_dir,prefd,sufd,nf1,nf2,sname,mNp,savdir,mask_file,20,0.33)
+                events, times, counter, img, nframes, mask, trace = readdata.get_eiger_event_datan(sample_dir,prefd,sufd,nf1,nf2,sname,mNp,savdir,mask_file,phthr,fr)
                 if engine == "GPU":
                     times = np.array(times,np.int32)
                     offsets = np.cumsum(counter, dtype=np.uint32)
@@ -306,10 +310,9 @@ def main():
 
 
         #### plot results #######
-        if toplot =="yes":
-            try:
-                plot_cf(res,sname)
-            except: pass
+        try:
+            plot_cf(res,sname+" Scan "+str(scan),toplot)
+        except: pass
 
         print("Saving trc")
         try:
@@ -317,11 +320,10 @@ def main():
                 readdata.savenpz(savdir+sname+"_event_trc.npz",np.array(trc,np.float32))
         except: pass
 
-        if toplot =="yes":
-            try:
-                print("Ploting trc, please wait")
-                show_trc(trc,sname,savdir)
-            except: pass
+        try:
+           print("Ploting trc, please wait")
+           show_trc(trc,sname+" Scan "+str(scan),savdir,toplot)
+        except: pass
 
     elif correlator == "intensity":
         ##### intensity #################################
@@ -429,10 +431,9 @@ def main():
 
 
         #### plot results #######
-        if toplot =="yes":
-            try:
-                plot_cf(res,sname)
-            except: pass
+        try:
+            plot_cf(res,sname+" Scan "+str(scan),toplot)
+        except: pass
 
         print("Saving trc")
         try:
@@ -440,11 +441,10 @@ def main():
                 readdata.savenpz(savdir+sname+"_trc.npz",np.array(trc,np.float32))
         except: pass
 
-        if toplot =="yes":
-            try:
-                print("Ploting trc, please wait")
-                show_trc(trc,sname,savdir)
-            except: pass
+        try:
+            print("Ploting trc, please wait")
+            show_trc(trc,sname+" Scan "+str(scan),savdir,toplot)
+        except: pass
     else: pass
     sys.exit()
 """

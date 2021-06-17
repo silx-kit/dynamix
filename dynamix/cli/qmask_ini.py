@@ -103,7 +103,7 @@ def main():
 
     data = np.ma.array(data,mask=mask)
     qmask = mask*0
-
+    ny,nx = data.shape
 
     t0 = time.time()
     rad, r_q, new_saxs = tools.radi(data,mask,cx,cy)#radial averaging
@@ -161,7 +161,8 @@ def main():
 
     plt.figure()
     plt.imshow(qmask.data,cmap='gray_r')
-    plt.plot(cx,cy,'r+')
+    if (cx<=nx) and (cy<=ny):
+        plt.plot(cx,cy,'r+')
     plt.grid()
     plt.xlabel("Pixel x")
     plt.ylabel("Pixel y")
@@ -170,7 +171,8 @@ def main():
     plt.figure()
     plt.imshow(np.log10(data),cmap='jet')
     plt.imshow(qmask,cmap='gray_r',alpha=0.5)
-    plt.plot(cx,cy,'r+')
+    if (cx<=nx) and (cy<=ny):
+        plt.plot(cx,cy,'r+')
     plt.grid()
     plt.xlabel("Pixel x")
     plt.ylabel("Pixel y")
