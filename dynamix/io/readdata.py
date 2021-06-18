@@ -337,13 +337,14 @@ def get_eiger_event_datan(datdir,prefd,sufd,nf1,nf2,sname,mNp,savdir,mask_file,t
         fr = np.ravel(matr)
         evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,fr,thr,it,ll)
         trace[it] = tr 
-        if it == max_e:
-            nmax_e = int(1.1*n_frames*cnt.max()/max_e)
-            if nmax_e > max_e+10:
+        if it >= max_e:
+            cntm = cnt.max()
+            if cntm == max_e-1:
+                nmax_e = int(1.1*n_frames*cnt.max()/it)
                 evs = np.concatenate((evs,np.zeros((ll,nmax_e-max_e),np.uint8)),axis=1)
                 tms = np.concatenate((tms,np.zeros((ll,nmax_e-max_e),np.uint16)),axis=1)
                 max_e = nmax_e+0
-                print("Extend array size to %d" % max_e)
+                print("Extend array size to %d, file number %d" % (max_e,it))
         it += 1
  
     if not os.path.exists(savdir):
@@ -408,10 +409,10 @@ def get_ccd_event_datan(datdir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU
     
     n_frames = len(filenames)
     ll = nx*ny # total number of pixels
-    lp = int(n_frames*frc) # total number of frames with events 15%
-    mask = np.array(np.ravel(mask_data),np.uint8)
-    evs = np.zeros((ll,lp),np.uint8)
-    tms = np.zeros((ll,lp),np.uint16)
+    max_e = 1000#int(n_frames*frc) # total number of frames with events 15%
+    mask = np.array(np.ravel(mask),np.uint8)
+    evs = np.zeros((ll,max_e),np.uint8)
+    tms = np.zeros((ll,max_e),np.uint16)
     cnt = np.ravel(np.zeros((ll,),np.uint16))
     afr = np.ravel(np.zeros((ll,),np.uint32))
     trace = np.zeros((n_frames,),np.uint32)
@@ -430,7 +431,15 @@ def get_ccd_event_datan(datdir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU
         msumpix,mpix,fr = dropimgood(matr,darkimg,lth,bADU,tADU,mNp,aduph,nx,ny)#dropletize CCD frames
         fr = np.ravel(fr)
         evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,fr,thr,it,ll)
-        trace[i] = tr 
+        trace[it] = tr 
+        if it >= max_e:
+            cntm = cnt.max()
+            if cntm == max_e-1:
+                nmax_e = int(1.1*n_frames*cnt.max()/it)
+                evs = np.concatenate((evs,np.zeros((ll,nmax_e-max_e),np.uint8)),axis=1)
+                tms = np.concatenate((tms,np.zeros((ll,nmax_e-max_e),np.uint16)),axis=1)
+                max_e = nmax_e+0
+                print("Extend array size to %d, file number %d" % (max_e,it))
         it += 1
  
     if not os.path.exists(savdir):

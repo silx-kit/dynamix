@@ -404,13 +404,14 @@ def id10_eiger4m_event_GPU_datan(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
         fr = np.ravel(data[i,:,:])
         evs,tms,cnt,afr,mask,tr = neigercompress(evs,tms,cnt,afr,mask,fr,thr,it,ll)
         trace[it] = tr
-        if it == max_e:
-            nmax_e = int(1.1*n_frames*cnt.max()/max_e)
-            if nmax_e > max_e+10:
+        if it >= max_e:
+            cntm = cnt.max()
+            if cntm == max_e-1:
+                nmax_e = int(1.1*n_frames*cnt.max()/it)
                 evs = np.concatenate((evs,np.zeros((ll,nmax_e-max_e),np.uint8)),axis=1)
                 tms = np.concatenate((tms,np.zeros((ll,nmax_e-max_e),np.uint16)),axis=1)
                 max_e = nmax_e+0
-                print("Extend array size to %d" % max_e)
+                print("Extend array size to %d, file number %d" % (max_e,it))
         it += 1
     f.close()
     afr = afr/n_frames
