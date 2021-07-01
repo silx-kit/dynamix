@@ -102,9 +102,16 @@ class XPCSDataset(object):
 
     avail_datasets = get_datasets()
 
-    def __init__(self, name):
-        self.check_dataset(name)
-        self.load_dataset(name)
+    def __init__(self, name=None):
+        self.name = None
+        self.dataset_desc = None
+        self.data = None
+        self.data_file = None
+        self.result_file = None
+        self.result = None
+        if name:
+            self.check_dataset(name)
+            self.load_dataset(name)
 
     def check_dataset(self, name):
         if name not in self.avail_datasets:
