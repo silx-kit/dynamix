@@ -1,7 +1,6 @@
 import numpy as np
-# from silx.opencl.common import pyopencl as cl
 import pyopencl.array as parray
-from ..utils import get_opencl_srcfile
+from ..utils import get_opencl_srcfile, Compacted
 from .common import OpenclCorrelator, OpenclProcessing
 
 
@@ -231,7 +230,7 @@ class FramesCompressor(object):
         res_offsets = np.zeros(np.prod(frames.shape[1:]) + 1, dtype=np.uint32)
         res_offsets[1:] = offsets[:]
 
-        return res_data, res_times, res_offsets
+        return Compacted(res_data, res_times, res_offsets)
 
     def process_frame(self, frame):
         """
@@ -266,7 +265,7 @@ class FramesCompressor(object):
         events = self.events.ravel()[m]
         times = self.times.ravel()[m]
 
-        return events, times, offsets
+        return Compacted(events, times, offsets)
 
 
 class OpenclCompressor(OpenclProcessing):

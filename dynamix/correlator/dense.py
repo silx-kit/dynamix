@@ -4,7 +4,7 @@ import numpy as np
 import pyopencl.array as parray
 from os import path
 from multiprocessing import cpu_count
-from ..utils import nextpow2, updiv, get_opencl_srcfile, get_next_power
+from ..utils import nextpow2, get_opencl_srcfile, get_next_power, CorrelationResult
 from .common import OpenclCorrelator, BaseCorrelator
 
 from silx.math.fft.fftw import FFTW
@@ -26,7 +26,6 @@ except ImportError:
 
 NCPU = cpu_count()
 
-CorrelationResult = namedtuple("CorrelationResult", "res dev")
 
 
 def py_dense_correlator(xpcs_data, mask, calc_std=False):

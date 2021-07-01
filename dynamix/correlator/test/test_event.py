@@ -28,45 +28,89 @@
 
 __authors__ = ["P. Paleo"]
 __license__ = "MIT"
-__date__ = "04/09/2019"
+__date__ = "01/07/2021"
 
 
-from time import time
+import time
 import logging
 import unittest
-import numpy as np
-from dynamix.test.utils import XPCSDataset
-from dynamix.correlator.event import EventCorrelator, FramesCompressor
-
-logging.basicConfig(level=logging.DEBUG)
+import numpy 
+from ...test.utils import XPCSDataset, DatasetDescription
+from ..event import EventCorrelator, FramesCompressor
+from ...tools.decorators import timeit
+np = numpy
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+
+@timeit
+def build_random_stack(shape=(10,11), nframes=111, dtype="uint8", nnz=10):
+    dtype = numpy.dtype(dtype)
+    npix = numpy.prod(shape)
+    maxi = numpy.iinfo(dtype).max
+    stack = np.zeros((nframes,)+(shape), dtype=dtype)
+    nnz2d = numpy.random.randint(1,nnz, size=shape)
+    pix_ptr = numpy.cumsum(nnz2d)
+    last = pix_ptr[-1]
+    pix_ptr = numpy.concatenate(([0],pix_ptr))
+    values = numpy.random.randint(0, maxi, last)
+    times = numpy.random.randint(0,nframes,last)
+    for i in range(npix):
+        line = stack[:, i//shape[-1], i%shape[-1]]
+        line[times[pix_ptr[i]:pix_ptr[i+1]]] = values[pix_ptr[i]:pix_ptr[i+1]]
+    return stack
+ 
+def build_fake_dataset(shape=(233,231), nframes=513, dtype="uint8", nnz=17):
+    "Build a completely fake  dataset to test sparsification"
+    data = build_random_stack(shape, nframes, dtype, nnz)
+    
+    self = XPCSDataset()
+    self.name = "fake"
+    descr = {"name":"fake",
+             "data":data, 
+             "result":None, "description":f"Fake dataset with nnz={nnz}", 
+             "nframes":nframes, 
+             "dtype":dtype,
+             "frame_shape":shape, 
+             "bins":None}
+    self.dataset_desc = DatasetDescription(**descr)
+    self.data = data
+    self.data_file = None
+    self.result_file = None
+    self.result = None
+    return self
 
 class TestEventDataStructure(unittest.TestCase):
 
     def setUp(self):
-        logger.debug("Loading data")
-        self.dataset = XPCSDataset("andor_1024_3k")
-        self.shape = self.dataset.dataset_desc.frame_shape
-        self.nframes = self.dataset.dataset_desc.nframes
-        self.compressor = FramesCompressor(self.shape, self.nframes, 330, np.int8)
+        logger.debug("TestEventDataStructure.setUp")
+        #self.dataset = XPCSDataset("andor_1024_3k")
+        #self.nnz = 330
+        self.nnz = 10
+        self.dtype = np.dtype("int8") 
+        self.shape = (101, 103)
+        self.nframes = 257        
+        self.dataset = build_fake_dataset(dtype=self.dtype, shape=self.shape, nnz=self.nnz, nframes=self.nframes)
 
     def tearDown(self):
-        pass
-
+        self.dataset = self.shape = self.nframes = self.dtype = self.nnz = None
+    
+    @property
+    def compressor(self):
+        "Single use compressor"
+        return FramesCompressor(self.shape, self.nframes, self.nnz, self.dtype)
+    
+    @timeit
     def compute_reference_datastructure(self):
-        logger.debug("Computing reference data compaction to events")
         return self.compressor.compress_all_stack(self.dataset.data)
-
 
     def test_progressive_compression(self):
         # Simulate progressive acquisition + compaction of frames
         logger.debug("Computing progressive data compaction")
+        compressor = self.compressor
         for frame in self.dataset.data:
-            self.compressor.process_frame(frame)
+            compressor.process_frame(frame)
         # Compare with reference implementation (compact all frames in a single pass)
         ref_data, ref_times, ref_offsets = self.compute_reference_datastructure()
-        data, times, offsets = self.compressor.get_compacted_events()
+        data, times, offsets = compressor.get_compacted_events()
 
         self.assertTrue(np.allclose(data, ref_data))
         self.assertTrue(np.allclose(times, ref_times))
@@ -86,11 +130,13 @@ class TestEvent(unittest.TestCase):
         self.shape = self.dataset.dataset_desc.frame_shape
         self.nframes = self.dataset.dataset_desc.nframes
         self.ref = self.dataset.result
+        self.events_struct = None
         self.compact_frames()
         self.tol = 5e-3
 
     def tearDown(self):
-        pass
+        self.dataset = None
+        self.events_struct = None
 
     def compact_frames(self):
         logger.debug("Compacting frames")
@@ -126,23 +172,21 @@ class TestEvent(unittest.TestCase):
             profile=True
         )
         # Correlate
-        t0 = time()
+        t0 = time.perf_counter()
         res = self.correlator.correlate(
             vol_times,
             vol_data,
             offsets
         )
-        logger.info("OpenCL event correlator took %.1f ms" % ((time() - t0)*1e3))
+        logger.info("OpenCL event correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
         self.compare(res, "OpenCL event correlator")
 
 
 
 def suite():
     testsuite = unittest.TestSuite()
-    testsuite.addTest(
-        # unittest.defaultTestLoader.loadTestsFromTestCase(TestEventDataStructure)
-        unittest.defaultTestLoader.loadTestsFromTestCase(TestEvent)
-    )
+    testsuite.addTest(unittest.defaultTestLoader.loadTestsFromTestCase(TestEventDataStructure))
+    testsuite.addTest(unittest.defaultTestLoader.loadTestsFromTestCase(TestEvent))
     return testsuite
 
 
