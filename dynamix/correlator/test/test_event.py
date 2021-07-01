@@ -94,18 +94,18 @@ class TestEventDataStructure(unittest.TestCase):
         self.dataset = self.shape = self.nframes = self.dtype = self.nnz = None
     
     @property
-    def compressor(self):
+    def numpy_compressor(self):
         "Single use compressor"
         return FramesCompressor(self.shape, self.nframes, self.nnz, self.dtype)
     
     @timeit
     def compute_reference_datastructure(self):
-        return self.compressor.compress_all_stack(self.dataset.data)
+        return self.numpy_compressor.compress_all_stack(self.dataset.data)
 
     def test_progressive_compression(self):
         # Simulate progressive acquisition + compaction of frames
         logger.debug("Computing progressive data compaction")
-        compressor = self.compressor
+        compressor = self.numpy_compressor
         for frame in self.dataset.data:
             compressor.process_frame(frame)
         # Compare with reference implementation (compact all frames in a single pass)

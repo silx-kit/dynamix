@@ -1,17 +1,11 @@
 #! /usr/bin/env python3
 # wxpcs code that works with ini file
-import sys
-# sys.path.append("/data/id10/inhouse/Programs/PyXPCS_project/wxpcs")
-# sys.path.append("/users/chushkin/Documents/Analysis/Glass_school_2019/wxpcs")
-# sys.path.append("/users/chushkin/Documents/Programs/PyXPCS_project/wxpcs")
 
 import  numpy as np
 import numba as nb
 from .WXPCS import fecorrt
 import time
 from collections import namedtuple
-
-import os
 import psutil
 nproc = psutil.cpu_count(logical=True)  # len(os.sched_getaffinity(0)) * psutil.cpu_count(logical=False) // psutil.cpu_count(logical=True)
 
@@ -116,16 +110,13 @@ def nbecorrts_q(events, times, cnt, qqmask, n_frames, calc_std=False, ttcf_par=0
     :return: CorrelationResult structure with correlation functions
     """
     print("start calculation of the correlation functions")
-    t0 = time.time()
+    t0 = time.perf_counter()
 
     qqmask = np.ravel(qqmask)[cnt > 0]
     cnt = cnt[cnt > 0]
 
-    # num, mint = ncorrelate(events,times,cnt,qqmask,n_frames)
     print("Number of used processors: ", nproc)
     num, mint = ncorrelatepm(events, times, cnt, qqmask, n_frames, nproc)  #  parallel
-    # num, mint = ncorrelate(events,times,cnt,qqmask,n_frames)#  paralle
-    res = []
     qm = qqmask.max()
     res = np.zeros((qm, n_frames - 1), dtype=np.float32)
     if calc_std:
@@ -158,7 +149,7 @@ def nbecorrts_q(events, times, cnt, qqmask, n_frames, calc_std=False, ttcf_par=0
                 trc[j, j] = tmp
             del tmp
 
-    print("Total correlation time %2.2f sec" % (time.time() - t0))
+    print("Total correlation time %2.2f sec" % (time.perf_counter() - t0))
     # return wcf,mtcf,cor
     if ttcf_par == 0:
         trc = 0
@@ -170,7 +161,7 @@ def nbecorrts_q(events, times, cnt, qqmask, n_frames, calc_std=False, ttcf_par=0
 ########### Event_correlator standard several qs ################
 def ecorrts_q(pixels, s, qqmask, calc_std=False, ttcf_par=0):
     print("start calculation of the correlation functions")
-    t0 = time.time()
+    t0 = time.perf_counter()
     lpixels = len(pixels)  # number of frames
     rpixels = range(lpixels)
     t = []
@@ -193,7 +184,7 @@ def ecorrts_q(pixels, s, qqmask, calc_std=False, ttcf_par=0):
         indpi = np.in1d(pix, indx)
         tq = t[indpi]
         pixq = pix[indpi]
-        s, tt = np.histogram(tq, bins=lpixels)
+        s, _ = np.histogram(tq, bins=lpixels)
         print("Number of pixels for q %d is %d" % (q, for_norm))
         print("Average photons per frame for q %d is %f" % (q, np.mean(s)))
         print("Average photons per frame per pixel for q %d is %f" % (q, np.mean(s) / for_norm))
@@ -226,7 +217,7 @@ def ecorrts_q(pixels, s, qqmask, calc_std=False, ttcf_par=0):
             for j in range(lpixels - 1):
                 trc[j, j] = tmp
             del tmp
-    print("Total correlation time %2.2f sec" % (time.time() - t0))
+    print("Total correlation time %2.2f sec" % (time.perf_counter() - t0))
     # return wcf,mtcf,cor
     if ttcf_par == 0:
         trc = 0
@@ -238,16 +229,15 @@ def ecorrts_q(pixels, s, qqmask, calc_std=False, ttcf_par=0):
 ########### Event_correlator standard ################
 def ecorrts(pixels, s, for_norm):
     print("start calculation of the correlation functions")
-    t0 = time.time()
+    t0 = time.perf_counter()
     lpixels = len(pixels)
     rpixels = range(lpixels)
     t = []
     for t1 in rpixels:
-       t += [t1] * s[t1]
+        t += [t1] * s[t1]
     # print("time for pre loop "+str(time()-timee))
     pix = np.concatenate(pixels).ravel()
     # print('start sorting')
-    times = time()
     pix = np.array(pix, dtype=np.int32)
     t = np.array(t)
     indpi = np.lexsort((t, pix))
@@ -255,10 +245,8 @@ def ecorrts(pixels, s, for_norm):
     pix = pix[indpi]
     # print('sorting took '+ str(time()-times))
     # print('start main loop')
-    timem = time.time()
     lenpi = len(pix)
     cor = np.zeros((lpixels, lpixels), dtype=np.uint32)
-    timef = time.time()
     cor = fecorrt(pix, t, cor, lenpi, lpixels)  # fortran module
     # to split for multicores
     # ind = np.where(pix<133128)[0][-1]
@@ -287,7 +275,7 @@ def ecorrts(pixels, s, for_norm):
     wcf = x + 0
     mtcf = cftomt_testing(x)
     cor /= norm
-    print("Total time for correlating %2.2f sec" % (time.time() - t0))
+    print("Total time for correlating %2.2f sec" % (time.perf_counter() - t0))
     return wcf, mtcf, cor
 ##############################################################################
 
@@ -317,10 +305,10 @@ def gpu_ecorr(events, times, offsets, shape, nframes, dtype, qqmask, F):
 
     print("start calculation of the correlation functions")
     from dynamix.correlator.event import EventCorrelator
-    t0 = time.time()
+    t0 = time.perf_counter()
     E = EventCorrelator(shape, nframes, F.max_nnz, dtype=dtype, total_events_count=events.size, scale_factor=qqmask[qqmask == 1].size)
     result = E.correlate(times, events, offsets)
-    print("Total correlation time %2.2f sec" % (time.time() - t0))
+    print("Total correlation time %2.2f sec" % (time.perf_counter() - t0))
     res = np.zeros((1, nframes - 1), dtype=np.float32)
     dev = np.zeros((1, nframes - 1), dtype=np.float32)
     res[0,:] = result[0][1:]
@@ -346,7 +334,7 @@ def gpu_ecorr_q(events, times, offsets, shape, nframes, dtype, qqmask, max_nnz):
 
     print("start calculation of the correlation functions")
     from dynamix.correlator.event import EventCorrelator
-    t0 = time.time()
+    t0 = time.perf_counter()
     qm = qqmask.max()
     res = np.zeros((qm, nframes - 1), np.float32)
     dev = np.zeros_like(res)
@@ -356,7 +344,7 @@ def gpu_ecorr_q(events, times, offsets, shape, nframes, dtype, qqmask, max_nnz):
         print("Number of pixels for q %d is %d" % (q, E.scale_factors[q]))
         res[q - 1,:] = result[q - 1][1:]  # 1 time correlation function
         dev[q - 1,:] = result[q - 1][1:] * 1e-3  # error of the 1 time correlation function
-    print("Total correlation time %2.2f sec" % (time.time() - t0))
+    print("Total correlation time %2.2f sec" % (time.perf_counter() - t0))
     trc = 0
     return CorrelationResult(res, dev, trc)
 

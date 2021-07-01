@@ -295,7 +295,7 @@ class OpenclCompressor(OpenclProcessing):
     def process_stack(self, stack):
         pass
 
-    def process_substack(self, frames, start, end):
+    def process_slab(self, frames, start, end):
         """
         Compress a single frame, and update the events stack state.
         """

@@ -21,7 +21,7 @@ def timeit(func):
         t1 = time.perf_counter()
         res = func(*arg, **kw)
         t2 = time.perf_counter()
-        name = func.func_name
+        name = func.__name__
         timelog.warning("%s took %.3fs", name, t2 - t1)
         return res
 
