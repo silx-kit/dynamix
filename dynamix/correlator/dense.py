@@ -143,7 +143,7 @@ class MatMulCorrelator(BaseCorrelator):
 
 class DenseCorrelator(OpenclCorrelator):
 
-    kernel_files = ["densecorrelator.cl"]
+    kernel_files = ["dynamix:opencl/densecorrelator.cl"]
 
     def __init__(
         self, shape, nframes,
@@ -166,9 +166,8 @@ class DenseCorrelator(OpenclCorrelator):
         self._allocate_arrays()
 
     def _setup_kernels(self):
-        kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
-            kernel_files=kernel_files,
+            kernel_files=self.kernel_files,
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DNUM_BINS=%d" % self.n_bins,

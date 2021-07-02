@@ -55,7 +55,7 @@ class SparseCorrelator(OpenclCorrelator):
     def _setup_kernels(self):
         self.kernel_name = self._determine_kernel()
         self.compile_kernels(
-            get_opencl_srcfile("correlator.cl"),
+            "dynamix:opencl/correlator.cl",
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DDTYPE=%s" % self.c_dtype,

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class EventCorrelator(OpenclCorrelator):
 
-    kernel_files = ["evtcorrelator.cl"]
+    kernel_files = ["dynamix:opencl/evtcorrelator.cl"]
 
     """
     A class to compute the correlation function for sparse XPCS data.
@@ -75,9 +75,8 @@ class EventCorrelator(OpenclCorrelator):
         self.total_events_count = total_events_count or max_events_count * np.prod(self.shape)
 
     def _setup_kernels(self):
-        kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
-            kernel_files=kernel_files,
+            kernel_files=self.kernel_files,
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DDTYPE=%s" % self.c_dtype,
