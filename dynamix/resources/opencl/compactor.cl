@@ -34,12 +34,11 @@ kernel void compactor1( const global DTYPE* slab,
     for (int k=0; k<timestamp_last-timestamp_first; k++){
         DTYPE value = slab[k*image_width*image_height+pos];
         if (value>0){
-            uint cnt = counter[pos];
+            uint cnt = counter[pos]++;
             if (cnt<nnz){
                 times_array[cnt+nnz*pos] = k +  timestamp_first;
                 data_array[cnt+nnz*pos] = value;
             }
-            counter[pos] = cnt+1;
         }
     }
 }
