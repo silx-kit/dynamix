@@ -6,13 +6,15 @@ __date__ = "02/07/2021"
 __status__ = "stable"
 
 import numpy as np
-
+import logging
 from silx.opencl.processing import BufferDescription, EventDescription
 from silx.opencl.common import pyopencl
 from pyopencl import  array as parray
 from pyopencl.tools import dtype_to_ctype
 from ..utils import get_opencl_srcfile, Compacted
+from ..tools.decorators import timeit
 from .common import OpenclCorrelator, OpenclProcessing
+logger = logging.getLogger(__name__)
 
 
 class EventCorrelator(OpenclCorrelator):
@@ -299,12 +301,13 @@ class OpenclCompressor(OpenclProcessing):
         self.grid = None
         self._allocate_buffers()
         self._setup_kernel()
+        self.reset()
     
     def _allocate_buffers(self):    
         buffers = [BufferDescription("counter", (self.npix,), np.uint32, None),
                    BufferDescription("slab", (self.slab_size, self.npix), self.dtype, None),
-                   BufferDescription("events", (self.npix, self.max_nnz), np.int32, None),
-                   BufferDescription("times", (self.npix, self.max_nnz), self.dtype, None),
+                   BufferDescription("events", (self.npix, self.max_nnz), self.dtype, None),
+                   BufferDescription("times", (self.npix, self.max_nnz), np.int32, None),
                    ]
                    
         self.allocate_buffers(buffers, use_array=True)
@@ -326,6 +329,7 @@ class OpenclCompressor(OpenclProcessing):
         self.cl_mem["events"].fill(0),
         self.cl_mem["counter"].fill(0)
 
+    # @timeit
     def process_stack(self, stack):
         self.reset()
         for start in range(0, stack.shape[0], self.slab_size):
@@ -336,9 +340,18 @@ class OpenclCompressor(OpenclProcessing):
         """
         Compress a single frame, and update the events stack state.
         """
-        assert start >= self.frames_counter, "Process slabs in incremental order !"
         nframes = end-start
-        self.cl_mem["slab"][:nframes].set(frames)
+        if frames.ndim == 3:
+            assert nframes == frames.shape[0]
+        assert start >= self.frames_counter, "Process slabs in incremental order !"
+        if nframes<self.slab_size:
+            self.cl_mem["slab"][:nframes].set(frames.ravel())
+        elif nframes>self.slab_size:
+            logger.warning("Too many frames in slab: %s slab_size: %s, dropping some of them", 
+                           frames.shape[0], self.slab_size)
+            self.cl_mem["slab"].set(frames[:self.slab_size])
+        else:
+            self.cl_mem["slab"].set(frames)
         
         evt = self.program.compactor1(self.queue, self.grid, None,
                                       self.cl_mem["slab"].data,
@@ -347,8 +360,8 @@ class OpenclCompressor(OpenclProcessing):
                                       np.int32(self.shape[1]),
                                       np.int32(self.shape[0]),
                                       np.int32(self.max_nnz),
-                                      self.cl_mem["times"].data,
                                       self.cl_mem["events"].data,
+                                      self.cl_mem["times"].data,
                                       self.cl_mem["counter"].data,
                                       )
                  
@@ -362,6 +375,7 @@ class OpenclCompressor(OpenclProcessing):
         """
         self.process_slab(frame, self.frames_counter, self.frames_counter+1)
 
+    # @timeit 
     def get_compacted_events(self, wait_for_all_frames=True):
         """
         Compact all compressed frames into three 1D structures:
@@ -377,7 +391,7 @@ class OpenclCompressor(OpenclProcessing):
         counter = self.cl_mem["counter"].get()
         
         #TODO: implement in OpenCL as well !
-        offsets = np.zeros(self.max_nnz + 1, dtype=np.uint32)
+        offsets = np.zeros(self.npix + 1, dtype=np.uint32)
         offsets[1:] = np.cumsum(counter)
 
         values = self.cl_mem["events"].get().ravel()
@@ -385,5 +399,11 @@ class OpenclCompressor(OpenclProcessing):
         msk = values > 0
         values = values[msk]
         times = times[msk]
-
         return Compacted(values, times, offsets)
+    
+    def compress_all_stack(self, frames):
+        """
+        Build the whole event structure assuming that all the frames are given.
+        """
+        self.process_stack(frames)
+        return self.get_compacted_events()

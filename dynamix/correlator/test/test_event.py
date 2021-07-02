@@ -111,19 +111,37 @@ class TestEventDataStructure(unittest.TestCase):
     def test_progressive_compression(self):
         # Simulate progressive acquisition + compaction of frames
         logger.debug("test_progressive_compression")
+
+        # Compare with reference implementation (compact all frames in a single pass)
+        t0 = time.perf_counter()
+        ref_data, ref_times, ref_offsets = self.compute_reference_datastructure()
+        t1 = time.perf_counter()
+
         for compressor in (self.numpy_compressor, self.opencl_compressor):
             name = compressor.__class__.__name__
             logger.debug("Working with %s", name)
             for frame in self.dataset.data:
                 compressor.process_frame(frame)
-            # Compare with reference implementation (compact all frames in a single pass)
-            ref_data, ref_times, ref_offsets = self.compute_reference_datastructure()
             data, times, offsets = compressor.get_compacted_events()
+            # print(f"data: {data.shape}, {data.dtype}")
+            # print(f"times: {times.shape}, {times.dtype}")
+            # print(f"offsets: {offsets.shape}, {offsets.dtype}")
     
             self.assertTrue(np.allclose(data, ref_data), msg=name)
             self.assertTrue(np.allclose(times, ref_times), msg=name)
             self.assertTrue(np.allclose(offsets, ref_offsets), msg=name)
-
+        
+        # test full-compression with OpenCL
+        compressor.reset()
+        t2 = time.perf_counter()
+        compressor.process_stack(self.dataset.data)
+        data, times, offsets = compressor.get_compacted_events()
+        t3 = time.perf_counter()
+        logger.info("OpenCL provides a speed-up of a factor %.3fx", (t1-t0)/(t3-t2))
+        self.assertTrue(np.allclose(data, ref_data), msg="process_stack")
+        self.assertTrue(np.allclose(times, ref_times), msg="process_stack")
+        self.assertTrue(np.allclose(offsets, ref_offsets), msg="process_stack")
+        
 
 class TestEvent(unittest.TestCase):
 
@@ -148,7 +166,7 @@ class TestEvent(unittest.TestCase):
 
     def compact_frames(self):
         logger.debug("Compacting frames")
-        self.frames_compressor = FramesCompressor(
+        self.frames_compressor = OpenclCompressor(
                 self.shape,
                 self.nframes,
                 self.max_nnz,
