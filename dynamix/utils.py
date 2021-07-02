@@ -2,6 +2,16 @@ from itertools import product
 from bisect import bisect
 import os
 import numpy as np
+from collections import namedtuple
+
+CorrelationResult = namedtuple("CorrelationResult", "res dev")
+Compacted =  namedtuple("Compacted", "values times pixel_ptr")
+""" Compacted form of a XPCS stack containing 3 1D structure:
+          - values: pixel values for nonzero data points. dtype: same as reference stack
+          - times: time indices corresponding to nonzero data points. dtype: uint32
+          - pixel_ptr: Pixel k's information is stored in values[pixel_ptr[k]:pixel_ptr[k+1]] and times[pixel_ptr[k]:pixel_ptr[k+1]]
+"""
+
 
 def get_folder_path(foldername=""):
     _file_dir = os.path.dirname(os.path.realpath(__file__))
