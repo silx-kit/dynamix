@@ -1,5 +1,16 @@
+__authors__ = {"Pierre Paleo", "Jerome Kieffer"}
+__contact__ = "Jerome.Kieffer@ESRF.eu"
+__license__ = "MIT"
+__copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
+__date__ = "02/07/2021"
+__status__ = "stable"
+
 import numpy as np
-import pyopencl.array as parray
+
+from silx.opencl.processing import BufferDescription, EventDescription
+from silx.opencl.common import pyopencl
+from pyopencl import  array as parray
+from pyopencl.tools import dtype_to_ctype
 from ..utils import get_opencl_srcfile, Compacted
 from .common import OpenclCorrelator, OpenclProcessing
 
@@ -271,9 +282,9 @@ class FramesCompressor(object):
 class OpenclCompressor(OpenclProcessing):
     """See doc of FramesCompressor"""
 
-    kernel_files = ["compactor.cl"]
+    kernel_files = ["dynamix:opencl/compactor.cl"]
 
-    def __init__(self, shape, nframes, max_nnz, dtype=np.int8,
+    def __init__(self, shape, nframes, max_nnz, dtype=np.int8, slab_size=100,
                  ctx=None, devicetype="all", platformid=None, deviceid=None,
                  block_size=None, memory=None, profile=False):
         OpenclProcessing.__init__(self, ctx=ctx, devicetype=devicetype, platformid=platformid, deviceid=deviceid,
@@ -283,53 +294,96 @@ class OpenclCompressor(OpenclProcessing):
         self.dtype = dtype
         self.max_nnz = max_nnz
         self.npix = np.prod(self.shape)
-        self._init_events_datastructure()
-
-    def _init_events_datastructure(self):
-        """Todo: replace with GPU version"""
-        self.events_counter = np.zeros(self.npix, dtype=np.int32)
-        self.events = np.zeros((self.npix, self.max_nnz), dtype=self.dtype)
-        self.times = np.zeros((self.npix, self.max_nnz), dtype=np.int32)
+        self.slab_size = slab_size
         self.frames_counter = 0
+        self.grid = None
+        self._allocate_buffers()
+        self._setup_kernel()
+    
+    def _allocate_buffers(self):    
+        buffers = [BufferDescription("counter", (self.npix,), np.uint32, None),
+                   BufferDescription("slab", (self.slab_size, self.npix), self.dtype, None),
+                   BufferDescription("events", (self.npix, self.max_nnz), np.int32, None),
+                   BufferDescription("times", (self.npix, self.max_nnz), self.dtype, None),
+                   ]
+                   
+        self.allocate_buffers(buffers, use_array=True)
+
+    def _setup_kernel(self):
+        self.compile_kernels(
+            kernel_files=self.kernel_files,
+            compile_options=[
+                f"-DDTYPE={dtype_to_ctype(self.dtype)}",
+                ]
+        )
+        self.grid = self.shape[::-1]
+
+    def reset(self):
+        """Reset the compressor"""
+        self.frames_counter = 0
+        self.cl_mem["slab"].fill(0)
+        self.cl_mem["times"].fill(0),
+        self.cl_mem["events"].fill(0),
+        self.cl_mem["counter"].fill(0)
 
     def process_stack(self, stack):
-        pass
+        self.reset()
+        for start in range(0, stack.shape[0], self.slab_size):
+            end = min(stack.shape[0], start+self.slab_size)
+            self.process_slab(stack[start:end], start, end)
 
     def process_slab(self, frames, start, end):
         """
         Compress a single frame, and update the events stack state.
         """
+        assert start >= self.frames_counter, "Process slabs in incremental order !"
+        nframes = end-start
+        self.cl_mem["slab"][:nframes].set(frames)
+        
+        evt = self.program.compactor1(self.queue, self.grid, None,
+                                      self.cl_mem["slab"].data,
+                                      np.int32(start),
+                                      np.int32(end),
+                                      np.int32(self.shape[1]),
+                                      np.int32(self.shape[0]),
+                                      np.int32(self.max_nnz),
+                                      self.cl_mem["times"].data,
+                                      self.cl_mem["events"].data,
+                                      self.cl_mem["counter"].data,
+                                      )
+                 
+        self.frames_counter = end
+        if self.profile:
+            self.events.append(EventDescription("compactor1", evt))
 
     def process_frame(self, frame):
         """
         Compress a single frame, and update the events stack state.
         """
-        frame1d = frame.ravel()
-
-        mask = frame1d > 0
-        self.events[mask, self.events_counter[mask]] = frame1d[mask]
-        self.times[mask, self.events_counter[mask]] = self.frames_counter
-        self.events_counter[mask] += 1
-        self.frames_counter += 1
+        self.process_slab(frame, self.frames_counter, self.frames_counter+1)
 
     def get_compacted_events(self, wait_for_all_frames=True):
         """
         Compact all compressed frames into three 1D structures:
-          - events: 1D array containing all the nonzero data points
+          - values: 1D array containing all the nonzero data points
           - times: time indices corresponding to nonzero data points
-          - offsets: events[offsets[k]:offsets[k+1]] corresponds to all events for pixel index k
+          - offsets: values[offsets[k]:offsets[k+1]] corresponds to all values>0 for pixel index k
         """
         if self.frames_counter < self.nframes - 1 and wait_for_all_frames:
             raise RuntimeError(
                 "Not all frames were compressed yet (%d/%d)" %
                 (self.frames_counter, self.nframes)
             )
-        counter = self.d_counter.get().ravel()
-        offsets = np.zeros(counter.size + 1, dtype=np.uint32)
+        counter = self.cl_mem["counter"].get()
+        
+        #TODO: implement in OpenCL as well !
+        offsets = np.zeros(self.max_nnz + 1, dtype=np.uint32)
         offsets[1:] = np.cumsum(counter)
 
-        m = self.events.ravel() > 0
-        events = self.events.ravel()[m]
-        times = self.times.ravel()[m]
+        values = self.cl_mem["events"].get().ravel()
+        times = self.cl_mem["times"].get().ravel()
+        msk = values > 0
+        values = values[msk]
+        times = times[msk]
 
-        return events, times, offsets
+        return Compacted(values, times, offsets)

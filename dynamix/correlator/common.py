@@ -1,11 +1,11 @@
 import numpy as np
 from os import linesep
-
-import pyopencl.array as parray
-from pyopencl.tools import dtype_to_ctype
+from .. import resources
+resources.silx_integration()
 from silx.opencl.common import pyopencl as cl
 from silx.opencl.processing import OpenclProcessing, KernelContainer
-
+import pyopencl.array as parray
+from pyopencl.tools import dtype_to_ctype
 
 class BaseCorrelator(object):
     "Abstract base class for all Correlators"
