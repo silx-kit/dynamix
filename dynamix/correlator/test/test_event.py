@@ -28,7 +28,7 @@
 
 __authors__ = ["P. Paleo"]
 __license__ = "MIT"
-__date__ = "01/07/2021"
+__date__ = "02/07/2021"
 
 
 import time
@@ -36,7 +36,7 @@ import logging
 import unittest
 import numpy 
 from ...test.utils import XPCSDataset, DatasetDescription
-from ..event import EventCorrelator, FramesCompressor
+from ..event import EventCorrelator, FramesCompressor, OpenclCompressor
 from ...tools.decorators import timeit
 np = numpy
 logger = logging.getLogger(__name__)
@@ -97,6 +97,12 @@ class TestEventDataStructure(unittest.TestCase):
     def numpy_compressor(self):
         "Single use compressor"
         return FramesCompressor(self.shape, self.nframes, self.nnz, self.dtype)
+
+    @property
+    def opencl_compressor(self):
+        "Single use compressor"
+        return OpenclCompressor(self.shape, self.nframes, self.nnz, self.dtype)
+
     
     @timeit
     def compute_reference_datastructure(self):
@@ -104,17 +110,19 @@ class TestEventDataStructure(unittest.TestCase):
 
     def test_progressive_compression(self):
         # Simulate progressive acquisition + compaction of frames
-        logger.debug("Computing progressive data compaction")
-        compressor = self.numpy_compressor
-        for frame in self.dataset.data:
-            compressor.process_frame(frame)
-        # Compare with reference implementation (compact all frames in a single pass)
-        ref_data, ref_times, ref_offsets = self.compute_reference_datastructure()
-        data, times, offsets = compressor.get_compacted_events()
-
-        self.assertTrue(np.allclose(data, ref_data))
-        self.assertTrue(np.allclose(times, ref_times))
-        self.assertTrue(np.allclose(offsets, ref_offsets))
+        logger.debug("test_progressive_compression")
+        for compressor in (self.numpy_compressor, self.opencl_compressor):
+            name = compressor.__class__.__name__
+            logger.debug("Working with %s", name)
+            for frame in self.dataset.data:
+                compressor.process_frame(frame)
+            # Compare with reference implementation (compact all frames in a single pass)
+            ref_data, ref_times, ref_offsets = self.compute_reference_datastructure()
+            data, times, offsets = compressor.get_compacted_events()
+    
+            self.assertTrue(np.allclose(data, ref_data), msg=name)
+            self.assertTrue(np.allclose(times, ref_times), msg=name)
+            self.assertTrue(np.allclose(offsets, ref_offsets), msg=name)
 
 
 class TestEvent(unittest.TestCase):
