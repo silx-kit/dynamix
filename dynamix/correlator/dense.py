@@ -69,6 +69,7 @@ def py_dense_correlator(xpcs_data, mask, calc_std=False):
     else:
         return res
 
+
 def y_dense_correlator(xpcs_data, mask):
     """
     version of YC
@@ -82,36 +83,35 @@ def y_dense_correlator(xpcs_data, mask):
         Mask of bins in the format (n_rows, n_columns).
         Zero pixels indicate unused pixels.
     """
-    ind = np.where(mask > 0) # unused pixels are 0
-    xpcs_data = xpcs_data[:, ind[0], ind[1]] # (n_tau, n_pix)
+    ind = np.where(mask > 0)  # unused pixels are 0
+    xpcs_data = xpcs_data[:, ind[0], ind[1]]  # (n_tau, n_pix)
     del ind
-    ltimes, lenmatr = np.shape(xpcs_data) # n_tau, n_pix
-    meanmatr = np.array(np.mean(xpcs_data, axis=1),np.float32) # xpcs_data.sum(axis=-1).sum(axis=-1)/n_pix
+    ltimes, lenmatr = np.shape(xpcs_data)  # n_tau, n_pix
+    meanmatr = np.array(np.mean(xpcs_data, axis=1), np.float32)  # xpcs_data.sum(axis=-1).sum(axis=-1)/n_pix
     meanmatr.shape = 1, ltimes
 
- 
-    if ltimes*lenmatr>1000*512*512:
+    if ltimes * lenmatr > 1000 * 512 * 512:
         nn = 16
-        newlen = lenmatr//nn
-        num = np.dot(np.array(xpcs_data[:,:newlen],np.float32), np.array(xpcs_data[:,:newlen],np.float32).T) 
-        xpcs_data =  xpcs_data[:,newlen:] + 0  
-        for i in range(1,nn-1,1):
-            num += np.dot(np.array(xpcs_data[:,:newlen],np.float32),np.array(xpcs_data[:,:newlen],np.float32).T)     
-            xpcs_data = xpcs_data[:,newlen:] + 0  
-        num += np.dot(np.array(xpcs_data,np.float32), np.array(xpcs_data,np.float32).T) 
+        newlen = lenmatr // nn
+        num = np.dot(np.array(xpcs_data[:,:newlen], np.float32), np.array(xpcs_data[:,:newlen], np.float32).T)
+        xpcs_data = xpcs_data[:, newlen:] + 0
+        for i in range(1, nn - 1, 1):
+            num += np.dot(np.array(xpcs_data[:,:newlen], np.float32), np.array(xpcs_data[:,:newlen], np.float32).T)
+            xpcs_data = xpcs_data[:, newlen:] + 0
+        num += np.dot(np.array(xpcs_data, np.float32), np.array(xpcs_data, np.float32).T)
     else:
-        num = np.dot(np.array(xpcs_data,np.float32), np.array(xpcs_data,np.float32).T)  
-    
+        num = np.dot(np.array(xpcs_data, np.float32), np.array(xpcs_data, np.float32).T)
+
     num /= lenmatr
     denom = np.dot(meanmatr.T, meanmatr)
     del meanmatr
-    res = np.zeros((ltimes-1,3)) # was ones()
-    for i in range(1,ltimes,1): # was ltimes-1, so res[-1] was always 1 !
+    res = np.zeros((ltimes - 1, 3))  # was ones()
+    for i in range(1, ltimes, 1):  # was ltimes-1, so res[-1] was always 1 !
         dia_n = np.diag(num, k=i)
         sdia_d = np.diag(denom, k=i)
-        res[i-1,0] = i
-        res[i-1,1] = np.sum(dia_n)/np.sum(sdia_d) 
-        res[i-1,2] = np.std(dia_n/sdia_d) / len(sdia_d)**0.5
+        res[i - 1, 0] = i
+        res[i - 1, 1] = np.sum(dia_n) / np.sum(sdia_d)
+        res[i - 1, 2] = np.std(dia_n / sdia_d) / len(sdia_d) ** 0.5
     return res
 
 
@@ -125,19 +125,6 @@ class MatMulCorrelator(BaseCorrelator):
         super().__init__()
         super()._set_parameters(shape, nframes, qmask, scale_factor, extra_options)
 
-<<<<<<< HEAD
-
-    def correlate(self, frames):
-        #res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
-        res = []
-        for i, bin_value in enumerate(self.bins):
-            mask = (self.qmask == bin_value)
-            #res[i] = py_dense_correlator(frames, mask)
-            res.append(y_dense_correlator(frames, mask))#errorbars included 
-        return res
-
-
-=======
     def correlate(self, frames, calc_std=False):
         res = np.zeros((self.n_bins, self.nframes), dtype=np.float32)
         if calc_std:
@@ -153,7 +140,6 @@ class MatMulCorrelator(BaseCorrelator):
             return CorrelationResult(res, dev)
         else:
             return res
->>>>>>> d1b6d77f254f6e49ae5ec24e47538a5f707e7d42
 
 
 class DenseCorrelator(OpenclCorrelator):
@@ -366,11 +352,11 @@ class FFTWCorrelator(FFTCorrelator):
         f_out1 = fftw_plan.data_out
         f_out2 = np.zeros_like(fftw_plan.data_out)
 
-        fftw_plan.data_in[:, :self.nframes] = frames_flat.T
+        fftw_plan.data_in[:,:self.nframes] = frames_flat.T
 
         f_out1 = fftw_plan.fft(None, output=f_out1)
         fftw_plan.data_in.fill(0)
-        fftw_plan.data_in[:, :self.nframes] = frames_flat.T[:, ::-1]
+        fftw_plan.data_in[:,:self.nframes] = frames_flat.T[:,::-1]
 
         f_out2 = fftw_plan.fft(None, output=f_out2)
         f_out1 *= f_out2
