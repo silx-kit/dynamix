@@ -1,5 +1,4 @@
 from os.path import isfile
-from .EdfFile3 import EdfFile
 import fabio
 ####################################
 #--- Standard EDF w/r functions ---#
