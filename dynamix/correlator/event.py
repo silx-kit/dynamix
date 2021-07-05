@@ -2,7 +2,7 @@ __authors__ = {"Pierre Paleo", "Jerome Kieffer"}
 __contact__ = "Jerome.Kieffer@ESRF.eu"
 __license__ = "MIT"
 __copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
-__date__ = "02/07/2021"
+__date__ = "05/07/2021"
 __status__ = "stable"
 
 import numpy as np
@@ -342,9 +342,12 @@ class OpenclCompressor(OpenclProcessing):
         nframes = end-start
         if frames.ndim == 3:
             assert nframes == frames.shape[0]
+            frames = frames.reshape((nframes, -1)) 
+        elif nframes == 1:
+            frames = frames.reshape((1, -1))  
         assert start >= self.frames_counter, "Process slabs in incremental order !"
         if nframes<self.slab_size:
-            self.cl_mem["slab"][:nframes].set(frames.ravel())
+            self.cl_mem["slab"][:nframes].set(frames)
         elif nframes>self.slab_size:
             logger.warning("Too many frames in slab: %s slab_size: %s, dropping some of them", 
                            frames.shape[0], self.slab_size)
