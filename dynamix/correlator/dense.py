@@ -4,7 +4,7 @@ import numpy as np
 import pyopencl.array as parray
 from os import path
 from multiprocessing import cpu_count
-from ..utils import nextpow2, updiv, get_opencl_srcfile, get_next_power
+from ..utils import nextpow2, get_opencl_srcfile, get_next_power, CorrelationResult
 from .common import OpenclCorrelator, BaseCorrelator
 
 from silx.math.fft.fftw import FFTW
@@ -26,7 +26,6 @@ except ImportError:
 
 NCPU = cpu_count()
 
-CorrelationResult = namedtuple("CorrelationResult", "res dev")
 
 
 def py_dense_correlator(xpcs_data, mask, calc_std=False):
@@ -144,7 +143,7 @@ class MatMulCorrelator(BaseCorrelator):
 
 class DenseCorrelator(OpenclCorrelator):
 
-    kernel_files = ["densecorrelator.cl"]
+    kernel_files = ["dynamix:opencl/densecorrelator.cl"]
 
     def __init__(
         self, shape, nframes,
@@ -167,9 +166,8 @@ class DenseCorrelator(OpenclCorrelator):
         self._allocate_arrays()
 
     def _setup_kernels(self):
-        kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
-            kernel_files=kernel_files,
+            kernel_files=self.kernel_files,
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DNUM_BINS=%d" % self.n_bins,

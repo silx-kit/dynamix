@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 #from setuptools import setup, Extension
 from numpy.distutils.core import setup, Extension

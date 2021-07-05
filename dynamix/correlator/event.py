@@ -1,12 +1,25 @@
+__authors__ = {"Pierre Paleo", "Jerome Kieffer"}
+__contact__ = "Jerome.Kieffer@ESRF.eu"
+__license__ = "MIT"
+__copyright__ = "European Synchrotron Radiation Facility, Grenoble, France"
+__date__ = "05/07/2021"
+__status__ = "stable"
+
 import numpy as np
-# from silx.opencl.common import pyopencl as cl
-import pyopencl.array as parray
-from ..utils import get_opencl_srcfile
-from .common import OpenclCorrelator
+import logging
+from silx.opencl.processing import BufferDescription, EventDescription
+from silx.opencl.common import pyopencl
+from pyopencl import  array as parray
+from pyopencl.tools import dtype_to_ctype
+from ..utils import get_opencl_srcfile, Compacted
+from ..tools.decorators import timeit
+from .common import OpenclCorrelator, OpenclProcessing
+logger = logging.getLogger(__name__)
+
 
 class EventCorrelator(OpenclCorrelator):
 
-    kernel_files = ["evtcorrelator.cl"]
+    kernel_files = ["dynamix:opencl/evtcorrelator.cl"]
 
     """
     A class to compute the correlation function for sparse XPCS data.
@@ -57,20 +70,17 @@ class EventCorrelator(OpenclCorrelator):
         self._allocate_events_arrays()
         self._setup_kernels()
 
-
     def _set_events_size(self, max_events_count, total_events_count):
         self.max_events_count = max_events_count
         self.total_events_count = total_events_count or max_events_count * np.prod(self.shape)
 
-
     def _setup_kernels(self):
-        kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
-            kernel_files=kernel_files,
+            kernel_files=self.kernel_files,
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DDTYPE=%s" % self.c_dtype,
-                "-DSUM_WG_SIZE=%d" % 1024, # TODO tune ?
+                "-DSUM_WG_SIZE=%d" % 1024,  # TODO tune ?
                 "-DMAX_EVT_COUNT=%d" % self.max_events_count,
                 "-DSCALE_FACTOR=%f" % self.scale_factors[1],
                 "-DNUM_BINS=%d" % self.n_bins,
@@ -80,15 +90,14 @@ class EventCorrelator(OpenclCorrelator):
         self.normalization_kernel = self.kernels.get_kernel("normalize_correlation")
 
         self.grid = self.shape[::-1]
-        self.wg = None # tune ?
-
+        self.wg = None  # tune ?
 
     def _allocate_events_arrays(self, is_reallocating=False):
         tot_nnz = self.total_events_count
 
         self.d_vol_times = parray.zeros(self.queue, tot_nnz, dtype=np.int32)
         self.d_vol_data = parray.zeros(self.queue, tot_nnz, dtype=self.dtype)
-        self.d_offsets = parray.zeros(self.queue, np.prod(self.shape)+1, dtype=np.uint32)
+        self.d_offsets = parray.zeros(self.queue, np.prod(self.shape) + 1, dtype=np.uint32)
 
         self._old_d_vol_times = None
         self._old_d_vol_data = None
@@ -99,7 +108,6 @@ class EventCorrelator(OpenclCorrelator):
             self.d_sums = parray.zeros(self.queue, self.output_shape, np.uint32)
             self.d_res = parray.zeros(self.queue, self.output_shape, np.float32)
             self.d_scale_factors = parray.to_device(self.queue, np.array(list(self.scale_factors.values()), dtype=np.float32))
-
 
     def _check_event_arrays(self, vol_times, vol_data, offsets):
         for arr in [vol_times, vol_data, offsets]:
@@ -113,7 +121,6 @@ class EventCorrelator(OpenclCorrelator):
                 self._allocate_events_arrays(is_reallocating=True)
             else:
                 raise ValueError("Too many events and allow_reallocate was set to False")
-
 
     def correlate(self, vol_times, vol_data, offsets):
         self._check_event_arrays(vol_times, vol_data, offsets)
@@ -145,7 +152,7 @@ class EventCorrelator(OpenclCorrelator):
         evt = self.normalization_kernel(
             self.queue,
             (self.nframes, self.n_bins),
-            None, # tune wg ?
+            None,  # tune wg ?
             self.d_res_int.data,
             self.d_res.data,
             self.d_sums.data,
@@ -158,7 +165,6 @@ class EventCorrelator(OpenclCorrelator):
         self._reset_arrays(["vol_times", "vol_data", "offsets"])
 
         return self.d_res.get()
-
 
 
 class FramesCompressor(object):
@@ -213,13 +219,11 @@ class FramesCompressor(object):
         self.npix = np.prod(self.shape)
         self._init_events_datastructure()
 
-
     def _init_events_datastructure(self):
         self.events_counter = np.zeros(self.npix, dtype=np.int32)
         self.events = np.zeros((self.npix, self.max_nnz), dtype=self.dtype)
         self.times = np.zeros((self.npix, self.max_nnz), dtype=np.int32)
         self.frames_counter = 0
-
 
     @staticmethod
     def compress_all_stack(frames):
@@ -235,11 +239,10 @@ class FramesCompressor(object):
         res_times = times[nnz_indices[-1]]
 
         offsets = np.cumsum((frames > 0).sum(axis=0).ravel())
-        res_offsets = np.zeros(np.prod(frames.shape[1:])+1, dtype=np.uint32)
+        res_offsets = np.zeros(np.prod(frames.shape[1:]) + 1, dtype=np.uint32)
         res_offsets[1:] = offsets[:]
 
-        return res_data, res_times, res_offsets
-
+        return Compacted(res_data, res_times, res_offsets)
 
     def process_frame(self, frame):
         """
@@ -252,7 +255,6 @@ class FramesCompressor(object):
         self.times[mask, self.events_counter[mask]] = self.frames_counter
         self.events_counter[mask] += 1
         self.frames_counter += 1
-
 
     def get_compacted_events(self, wait_for_all_frames=True):
         """
@@ -275,7 +277,135 @@ class FramesCompressor(object):
         events = self.events.ravel()[m]
         times = self.times.ravel()[m]
 
-        return events, times, offsets
+        return Compacted(events, times, offsets)
 
 
+class OpenclCompressor(OpenclProcessing):
+    """See doc of FramesCompressor"""
 
+    kernel_files = ["dynamix:opencl/compactor.cl"]
+
+    def __init__(self, shape, nframes, max_nnz, dtype=np.int8, slab_size=100,
+                 ctx=None, devicetype="all", platformid=None, deviceid=None,
+                 block_size=None, memory=None, profile=False):
+        OpenclProcessing.__init__(self, ctx=ctx, devicetype=devicetype, platformid=platformid, deviceid=deviceid,
+                                  block_size=block_size, memory=memory, profile=profile)
+        self.shape = shape
+        self.nframes = nframes
+        self.dtype = dtype
+        self.max_nnz = max_nnz
+        self.npix = np.prod(self.shape)
+        self.slab_size = slab_size
+        self.frames_counter = 0
+        self.grid = None
+        self._allocate_buffers()
+        self._setup_kernel()
+        self.reset()
+    
+    def _allocate_buffers(self):    
+        buffers = [BufferDescription("counter", (self.npix,), np.uint32, None),
+                   BufferDescription("slab", (self.slab_size, self.npix), self.dtype, None),
+                   BufferDescription("events", (self.npix, self.max_nnz), self.dtype, None),
+                   BufferDescription("times", (self.npix, self.max_nnz), np.int32, None),
+                   ]
+                   
+        self.allocate_buffers(buffers, use_array=True)
+
+    def _setup_kernel(self):
+        self.compile_kernels(
+            kernel_files=self.kernel_files,
+            compile_options=[
+                f"-DDTYPE={dtype_to_ctype(self.dtype)}",
+                ]
+        )
+        self.grid = self.shape[::-1]
+
+    def reset(self):
+        """Reset the compressor"""
+        self.frames_counter = 0
+        self.cl_mem["slab"].fill(0)
+        self.cl_mem["times"].fill(0),
+        self.cl_mem["events"].fill(0),
+        self.cl_mem["counter"].fill(0)
+
+    # @timeit
+    def process_stack(self, stack):
+        self.reset()
+        for start in range(0, stack.shape[0], self.slab_size):
+            end = min(stack.shape[0], start+self.slab_size)
+            self.process_slab(stack[start:end], start, end)
+
+    def process_slab(self, frames, start, end):
+        """
+        Compress a single frame, and update the events stack state.
+        """
+        nframes = end-start
+        if frames.ndim == 3:
+            assert nframes == frames.shape[0]
+            frames = frames.reshape((nframes, -1)) 
+        elif nframes == 1:
+            frames = frames.reshape((1, -1))  
+        assert start >= self.frames_counter, "Process slabs in incremental order !"
+        if nframes<self.slab_size:
+            self.cl_mem["slab"][:nframes].set(frames)
+        elif nframes>self.slab_size:
+            logger.warning("Too many frames in slab: %s slab_size: %s, dropping some of them", 
+                           frames.shape[0], self.slab_size)
+            self.cl_mem["slab"].set(frames[:self.slab_size])
+        else:
+            self.cl_mem["slab"].set(frames)
+        
+        evt = self.program.compactor1(self.queue, self.grid, None,
+                                      self.cl_mem["slab"].data,
+                                      np.int32(start),
+                                      np.int32(end),
+                                      np.int32(self.shape[1]),
+                                      np.int32(self.shape[0]),
+                                      np.int32(self.max_nnz),
+                                      self.cl_mem["events"].data,
+                                      self.cl_mem["times"].data,
+                                      self.cl_mem["counter"].data,
+                                      )
+                 
+        self.frames_counter = end
+        if self.profile:
+            self.events.append(EventDescription("compactor1", evt))
+
+    def process_frame(self, frame):
+        """
+        Compress a single frame, and update the events stack state.
+        """
+        self.process_slab(frame, self.frames_counter, self.frames_counter+1)
+
+    # @timeit 
+    def get_compacted_events(self, wait_for_all_frames=True):
+        """
+        Compact all compressed frames into three 1D structures:
+          - values: 1D array containing all the nonzero data points
+          - times: time indices corresponding to nonzero data points
+          - offsets: values[offsets[k]:offsets[k+1]] corresponds to all values>0 for pixel index k
+        """
+        if self.frames_counter < self.nframes - 1 and wait_for_all_frames:
+            raise RuntimeError(
+                "Not all frames were compressed yet (%d/%d)" %
+                (self.frames_counter, self.nframes)
+            )
+        counter = self.cl_mem["counter"].get()
+        
+        #TODO: implement in OpenCL as well !
+        offsets = np.zeros(self.npix + 1, dtype=np.uint32)
+        offsets[1:] = np.cumsum(counter)
+
+        values = self.cl_mem["events"].get().ravel()
+        times = self.cl_mem["times"].get().ravel()
+        msk = values > 0
+        values = values[msk]
+        times = times[msk]
+        return Compacted(values, times, offsets)
+    
+    def compress_all_stack(self, frames):
+        """
+        Build the whole event structure assuming that all the frames are given.
+        """
+        self.process_stack(frames)
+        return self.get_compacted_events()
