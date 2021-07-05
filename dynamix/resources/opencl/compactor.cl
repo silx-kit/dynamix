@@ -31,35 +31,16 @@ kernel void compactor1( const global DTYPE* slab,
         return;
     }
     uint pos = y*image_width + x;
+    uint cnt = counter[pos];
     for (int k=0; k<timestamp_last-timestamp_first; k++){
         DTYPE value = slab[k*image_width*image_height+pos];
         if (value>0){
-            uint cnt = counter[pos]++;
             if (cnt<nnz){
                 times_array[cnt+nnz*pos] = k +  timestamp_first;
                 data_array[cnt+nnz*pos] = value;
             }
-        }
+            cnt++;
+        }        
     }
-}
-/*Launched with (image_width, image_height, 32) and (1,1,32) for the block-size
- * One workgroup handles the copy of a complete pixel
- * 
- * 
- * TODO: implement !
- */
-kernel void compactor2(                        
-        const int image_width,
-        const int image_height,
-        const int nnz,
-        global int* times_array,
-        global DTYPE* data_array,
-        const global uint* pixel_ptr){
-    uint x = get_global_id(0);
-    uint y = get_global_id(1);
-    if ((x >= image_width) || (y >= image_height)){
-        return;
-    }
-    uint pos = y*image_width + x;
-    
+    counter[pos] = cnt;
 }
