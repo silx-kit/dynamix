@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-#from setuptools import setup, Extension
-from numpy.distutils.core import setup, Extension
+from setuptools import setup
+from numpy.distutils.core import Extension
 import os
 
 def get_version():
@@ -35,7 +35,8 @@ def setup_package():
                           'dynamix/correlator/WXPCS/droplet3.f',
                           'dynamix/correlator/WXPCS/dropimgood.f',
                           'dynamix/correlator/WXPCS/eigerpix.f'],
-                 f2py_options=['--verbose'])]
+                 # f2py_options=['--verbose'])
+            )]
     packages = ["dynamix", "dynamix.test"]
     package_dir = {"dynamix": "dynamix",
                    "dynamix.test": "dynamix/test"}
