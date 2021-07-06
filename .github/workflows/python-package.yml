@@ -30,6 +30,7 @@ jobs:
         source ci/intel_opencl_icd.sh
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
         python ci/info_platform.py
+        echo $OCL_ICD_VENDORS $CPATH
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -38,4 +39,5 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with run_tests.py
       run: |
+        echo $OCL_ICD_VENDORS $CPATH
         python run_tests.py
