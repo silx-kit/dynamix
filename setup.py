@@ -30,11 +30,11 @@ def setup_package():
         "cli",
     ]
     ext = [Extension(name='dynamix.correlator.WXPCS',
-                 sources=['dynamix/correlator/fortran/fecorr.f',
-                 'dynamix/correlator/fortran/fecorrt.f',
-                 'dynamix/correlator/fortran/droplet3.f',
-                 'dynamix/correlator/fortran/dropimgood.f',
-                 'dynamix/correlator/fortran/eigerpix.f'],
+                 sources=['dynamix/correlator/WXPCS/fecorr.f',
+                          'dynamix/correlator/WXPCS/fecorrt.f',
+                          'dynamix/correlator/WXPCS/droplet3.f',
+                          'dynamix/correlator/WXPCS/dropimgood.f',
+                          'dynamix/correlator/WXPCS/eigerpix.f'],
                  f2py_options=['--verbose'])]
     packages = ["dynamix", "dynamix.test"]
     package_dir = {"dynamix": "dynamix",
