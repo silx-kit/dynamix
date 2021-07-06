@@ -44,10 +44,7 @@ def h5writer(fileName,data):
     nxdata = nxentry.create_group('measurement')
     nxdata.attrs['NX_class'] = u'NXdata'
     nxdata.attrs['signal'] = u'3D data'              # Y axis of default plot
-    if sys.version_info < (3,):
-        string_dtype = h5py.special_dtype(vlen=unicode)
-    else:
-        string_dtype = h5py.special_dtype(vlen=str)
+    string_dtype = h5py.special_dtype(vlen=str)
     nxdata.attrs['axes'] = numpy.array(['frame_name', 'row_name', 'col_name'], dtype=string_dtype) # X axis of default plot
 
     # signal data
