@@ -128,7 +128,7 @@ kernel void correlator_multiQ_ordered(
     if (qbin >= nbin) return;
     if (ws>SUM_WG_SIZE){
         if (tid==0){
-            printf("Actual workgroup size %d is larger than allocated memory %s\n",ws, SUM_WG_SIZE);
+            printf("Actual workgroup size %d is larger than allocated memory %d\n",ws, SUM_WG_SIZE);
         }
         return;
     }
