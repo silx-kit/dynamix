@@ -242,7 +242,7 @@ class DenseCorrelator(OpenclCorrelator):
             )
         
         self.profile_add(evt, "Dense correlator")
-        print(self.d_output.get())
+        self.d_output.get()
         self._reset_arrays(["frames"])
 
         return self.d_output.get()  # get ?
@@ -297,7 +297,7 @@ class DenseOrderedCorrelator(OpenclCorrelator):
             deviceid=deviceid, block_size=block_size, memory=memory,
             profile=profile
         )
-        self._set_dtype(np.uint8, output=np.float32, sums=np.uint64)
+        self._set_dtype(dtype, output=np.float32, sums=np.uint64)
         self._setup_kernels()
         self._allocate_arrays()
 
@@ -313,35 +313,41 @@ class DenseOrderedCorrelator(OpenclCorrelator):
             ]
         )
         self.wg = (self.WG, 1, 1)
-        self.grid = (self.WG, self.n_bins, self.nframes)
+        self.grid = (self.WG, self.n_bins+1, self.nframes)
         self.reorder_kernel = self.kernels.get_kernel("multiQ_reorder")
         self.correlator_kernel = self.kernels.get_kernel("correlator_multiQ_ordered")
+        
     def _allocate_arrays(self):
         self.d_frames = parray.zeros(self.queue,
                                      (self.nframes,) + self.shape,
                                      self.dtype
                                      )
         self._old_d_frames = None
-        self.d_output_avg = parray.zeros(self.queue,
-                                         (self.n_bins, self.nframes),
-                                         self.output_dtype)
-        self.d_output_std = parray.zeros(self.queue,
-                                         (self.n_bins, self.nframes),
-                                         self.output_dtype)
-        self.d_qmask_ptr = parray.to_device(self.queue, self.qmask_ptr)
-        self.d_qmask_pix = parray.to_device(self.queue, self.qmask_pix)
         self.d_ordered = parray.zeros(self.queue,
                                       (self.nframes, (self.qmask_ptr[-1]-self.qmask_ptr[1])),
                                        self.dtype)
+
+        self.d_output_avg = parray.zeros(self.queue,
+                                         (self.n_bins, self.nframes),
+                                         self.output_dtype)
+
+        self.d_output_std = parray.zeros(self.queue,
+                                         (self.n_bins, self.nframes),
+                                         self.output_dtype)
+
+        self.d_qmask_ptr = parray.to_device(self.queue, self.qmask_ptr)
+        
+        self.d_qmask_pix = parray.to_device(self.queue, self.qmask_pix)
+
         
     def correlate(self, frames, calc_std=False):
         self._set_data({"frames": frames})
         evt = self.reorder_kernel(self.queue,  self.grid, self.wg,
                                   self.d_frames.data,
-                                  self.d_q_mask_ptr.data,
-                                  self.d_q_mask_pix.data,
+                                  self.d_qmask_ptr.data,
+                                  self.d_qmask_pix.data,
                                   np.int32(self.nframes),
-                                  np.int32(self.nbins),
+                                  np.int32(self.n_bins+1),
                                   np.int32(np.prod(self.shape)),
                                   self.d_ordered.data)
         self.profile_add(evt, "Re-order pixels")
@@ -349,15 +355,15 @@ class DenseOrderedCorrelator(OpenclCorrelator):
                                      self.d_ordered.data,
                                      self.d_qmask_ptr.data,
                                      self.d_output_avg.data,
-                                     self.d_output.std.data,
+                                     self.d_output_std.data,
                                      np.int32(self.nframes),
-                                     np.int32(self.n_bins)
-                                             )
+                                     np.int32(self.n_bins+1)
+                                     )
         self.profile_add(evt, "Dense ordered correlator")
         if calc_std:
-            return CorrelationResult(self.d_output.get(), self.d_output.get())
+            return CorrelationResult(self.d_output_avg.get(), self.d_output_std.get())
         else:
-            return self.d_output.get()
+            return self.d_output_avg.get()
 
 
 class FFTCorrelator(BaseCorrelator):

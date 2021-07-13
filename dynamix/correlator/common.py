@@ -174,7 +174,7 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         self.idx_dtype = np.dtype(idx)
         self.c_dtype = dtype_to_ctype(self.dtype)
         self.c_sums_dtype = dtype_to_ctype(self.sums_dtype)
-        self.c_idx_dtype = dtype_to_ctype(self.c_sums_dtype)
+        self.c_idx_dtype = dtype_to_ctype(self.idx_dtype)
 
     def _allocate_memory(self):
         # self.d_norm_mask = parray.to_device(self.queue, self.weights)
@@ -191,7 +191,7 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
             my_array_name = "d_" + arr_name
             my_array = getattr(self, my_array_name)
             assert my_array.shape == array.shape, "%s should have shape %s, got %s" % (my_array_name, str(my_array.shape), str(array.shape))
-            assert my_array.dtype == array.dtype
+            assert my_array.dtype == array.dtype, "%s should have dtype %s, got %s" % (my_array_name, my_array.dtype, array.dtype)
             if isinstance(array, np.ndarray):
                 my_array.set(array)
                 self.profile_add(my_array.events[-1], f"copy {arr_name} H->D")

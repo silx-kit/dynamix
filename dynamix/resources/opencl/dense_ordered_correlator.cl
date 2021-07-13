@@ -63,9 +63,9 @@ Size of the kernel:
     dim2: tau   groupsize: 1
 
 Constrains:
-      Collaboration between treads in dim0, expected WG threads.
+      Collaboration between treads in dim0, expected SUM_WG_SIZE threads.
       Workgroup size should be at least the size of a memory transaction and limited by the amount of shared memory
-      Shared memory: 3x WG * sizeof(uint)
+      Shared memory: 3x SUM_WG_SIZE * sizeof(uint)
       Requires double-precision floating point unit
 
 Parameters:
@@ -85,9 +85,9 @@ References:
 #endif
 
 // Sum-up all elements in 3 arrays, reset themt, and return the sum of each of them
-inline DTYPE_SUMS3 summed3(local DTYPE_SUMS* ary1,
-                     local DTYPE_SUMS* ary2,
-                     local DTYPE_SUMS* ary3){
+inline uint3 summed3(local uint* ary1,
+                     local uint* ary2,
+                     local uint* ary3){
     uint wg = get_local_size(0);
     const uint tid = get_local_id(0);
     barrier(CLK_LOCAL_MEM_FENCE);
@@ -101,7 +101,7 @@ inline DTYPE_SUMS3 summed3(local DTYPE_SUMS* ary1,
         if (wg>32)
             barrier(CLK_LOCAL_MEM_FENCE);
     }
-    DTYPE_SUMS3 value = (DTYPE_SUMS3)(ary1[0], ary2[0], ary3[0]);
+    uint3 value = (uint3)(ary1[0], ary2[0], ary3[0]);
     barrier(CLK_LOCAL_MEM_FENCE);
     ary1[tid] = 0;
     ary2[tid] = 0;
@@ -126,9 +126,9 @@ kernel void correlator_multiQ_ordered(
     if (tau >= Nt) return;
     if (qbin == 0) return;
     if (qbin >= nbin) return;
-    if (ws>WG){
+    if (ws>SUM_WG_SIZE){
         if (tid==0){
-            printf("Actual workgroup size %d is larger than allocated memory %s\n",ws, WG);
+            printf("Actual workgroup size %d is larger than allocated memory %s\n",ws, SUM_WG_SIZE);
         }
         return;
     }
@@ -138,13 +138,13 @@ kernel void correlator_multiQ_ordered(
     const int stop = q_mask_ptr[qbin+1] -offset;
     const int npix = stop - start;
     
-    ulong dia_n_sum = 0;
+    DTYPE_SUMS dia_n_sum = 0;
     double dia_d_sum = 0.0;
     
     //Shared arrays
-    local DTYPE_SUMS shared_sum1[WG];
-    local DTYPE_SUMS shared_sum2[WG];
-    local DTYPE_SUMS shared_dia_n_val[WG];
+    local uint shared_sum1[SUM_WG_SIZE];
+    local uint shared_sum2[SUM_WG_SIZE];
+    local uint shared_dia_n_val[SUM_WG_SIZE];
     shared_sum1[tid] = 0;
     shared_sum2[tid] = 0;
     shared_dia_n_val[tid] = 0;
@@ -154,9 +154,7 @@ kernel void correlator_multiQ_ordered(
     double varV = 0.0;  // sum on variance contribution
     uint cnt = 0;       // sum of weights, i.e counter
     for (uint t = tau; t < Nt; t++) {
-        DTYPE_SUMS sum1 = 0;
-        DTYPE_SUMS sum2 = 0;
-        DTYPE_SUMS dia_n_val = 0;
+
         for (uint idx = start+tid; idx < stop; idx+=ws) {
             uint val1 = frames[t*nb_pix + idx];
             uint val2 = frames[(t-tau)*nb_pix + idx];
@@ -164,10 +162,10 @@ kernel void correlator_multiQ_ordered(
             shared_sum1[tid] += val1;
             shared_sum2[tid] += val2;
         }
-        DTYPE_SUMS3 partial_sum = summed3(shared_dia_n_val, shared_sum1, shared_sum2);
-        dia_n_val = partial_sum.s0;
-        sum1 = partial_sum.s1;
-        sum2 = partial_sum.s2;
+        uint3 partial_sum = summed3(shared_dia_n_val, shared_sum1, shared_sum2);
+        DTYPE_SUMS dia_n_val = partial_sum.s0;
+        DTYPE_SUMS sum1 = partial_sum.s1;
+        DTYPE_SUMS sum2 = partial_sum.s2;
         
         if (tid==0){
             double dia_d_val = 1.0 * sum1 * sum2 / (npix * npix);
