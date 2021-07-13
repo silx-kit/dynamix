@@ -1,10 +1,12 @@
-import numpy as np
+import logging
 from os import linesep
+import numpy as np
 from scipy.sparse import csc_matrix
 import pyopencl.array as parray
 from pyopencl.tools import dtype_to_ctype
 from silx.opencl.common import pyopencl as cl
 from silx.opencl.processing import OpenclProcessing, KernelContainer
+logger = logging.getLogger(__name__)
 
 
 class BaseCorrelator(object):
