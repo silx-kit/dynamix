@@ -348,6 +348,7 @@ class DenseOrderedCorrelator(OpenclCorrelator):
 
     def correlate(self, frames, calc_std=False):
         self._set_data({"frames": frames})
+        
         self.profile_add(evt, "Dense ordered correlator")
 
         self._reset_arrays(["frames"])

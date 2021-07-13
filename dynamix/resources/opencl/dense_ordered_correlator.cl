@@ -24,13 +24,13 @@ Parameters:
         output: 3D array, stack of SAXS frames with pixel re-ordered.
 
 */
-kernel void multiQ_reorder(    const global char* frames,
+kernel void multiQ_reorder(    const global DTYPE* frames,
                                const global int* q_mask_ptr,
                                const global int* q_mask_pixels,
                                const int Nt,
                                const int nbin,
                                const int image_size,
-                               global char* output){
+                               global DTYPE* output){
     const uint tid = get_local_id(0);
     const uint ws = get_local_size(0);
     const uint qbin = get_global_id(1);
@@ -80,14 +80,14 @@ References:
     Variance propagation implemented according to doi:10.1145/3221269.3223036
 */
 
-#ifndef WG
-#define WG 1024
+#ifndef SUM_WG_SIZE
+#define SUM_WG_SIZE 1024
 #endif
 
 // Sum-up all elements in 3 arrays, reset themt, and return the sum of each of them
-inline uint3 summed3(local uint* ary1,
-                     local uint* ary2,
-                     local uint* ary3){
+inline DTYPE_SUMS3 summed3(local DTYPE_SUMS* ary1,
+                     local DTYPE_SUMS* ary2,
+                     local DTYPE_SUMS* ary3){
     uint wg = get_local_size(0);
     const uint tid = get_local_id(0);
     barrier(CLK_LOCAL_MEM_FENCE);
@@ -101,7 +101,7 @@ inline uint3 summed3(local uint* ary1,
         if (wg>32)
             barrier(CLK_LOCAL_MEM_FENCE);
     }
-    uint3 value = (uint3)(ary1[0], ary2[0], ary3[0]);
+    DTYPE_SUMS3 value = (DTYPE_SUMS3)(ary1[0], ary2[0], ary3[0]);
     barrier(CLK_LOCAL_MEM_FENCE);
     ary1[tid] = 0;
     ary2[tid] = 0;
@@ -112,7 +112,7 @@ inline uint3 summed3(local uint* ary1,
 
 
 kernel void correlator_multiQ_ordered(
-                                    const global char* frames,
+                                    const global DTYPE* frames,
                                     const global int* q_mask_ptr,
                                     global float* output_mean,
                                     global float* output_std,
@@ -142,9 +142,9 @@ kernel void correlator_multiQ_ordered(
     double dia_d_sum = 0.0;
     
     //Shared arrays
-    local uint shared_sum1[WG];
-    local uint shared_sum2[WG];
-    local uint shared_dia_n_val[WG];
+    local DTYPE_SUMS shared_sum1[WG];
+    local DTYPE_SUMS shared_sum2[WG];
+    local DTYPE_SUMS shared_dia_n_val[WG];
     shared_sum1[tid] = 0;
     shared_sum2[tid] = 0;
     shared_dia_n_val[tid] = 0;
@@ -154,9 +154,9 @@ kernel void correlator_multiQ_ordered(
     double varV = 0.0;  // sum on variance contribution
     uint cnt = 0;       // sum of weights, i.e counter
     for (uint t = tau; t < Nt; t++) {
-        ulong sum1 = 0;
-        ulong sum2 = 0;
-        ulong dia_n_val = 0;
+        DTYPE_SUMS sum1 = 0;
+        DTYPE_SUMS sum2 = 0;
+        DTYPE_SUMS dia_n_val = 0;
         for (uint idx = start+tid; idx < stop; idx+=ws) {
             uint val1 = frames[t*nb_pix + idx];
             uint val2 = frames[(t-tau)*nb_pix + idx];
@@ -164,7 +164,7 @@ kernel void correlator_multiQ_ordered(
             shared_sum1[tid] += val1;
             shared_sum2[tid] += val2;
         }
-        uint3 partial_sum = summed3(shared_dia_n_val, shared_sum1, shared_sum2);
+        DTYPE_SUMS3 partial_sum = summed3(shared_dia_n_val, shared_sum1, shared_sum2);
         dia_n_val = partial_sum.s0;
         sum1 = partial_sum.s1;
         sum2 = partial_sum.s2;
