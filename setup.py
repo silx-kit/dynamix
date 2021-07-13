@@ -1,6 +1,10 @@
 #!/usr/bin/env python
-
-from setuptools import setup
+import sys
+# Ugly hack !!!
+if "bdist_wheel" in  sys.argv:
+    from setuptools import setup
+else:
+    from numpy.distutils.core import setup
 from numpy.distutils.core import Extension
 import os
 
@@ -35,8 +39,9 @@ def setup_package():
                           'dynamix/correlator/WXPCS/droplet3.f',
                           'dynamix/correlator/WXPCS/dropimgood.f',
                           'dynamix/correlator/WXPCS/eigerpix.f'],
-                 # f2py_options=['--verbose'])
-            )]
+#                  f2py_options=['--verbose']
+                    )
+            ]
     packages = ["dynamix", "dynamix.test"]
     package_dir = {"dynamix": "dynamix",
                    "dynamix.test": "dynamix/test"}
