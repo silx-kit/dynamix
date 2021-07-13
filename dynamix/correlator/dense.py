@@ -242,10 +242,9 @@ class DenseCorrelator(OpenclCorrelator):
             )
         
         self.profile_add(evt, "Dense correlator")
-        self.d_output.get()
         self._reset_arrays(["frames"])
 
-        return self.d_output.get()  # get ?
+        return self.d_output.get()
 
     def _sum_frames(self):
         evt = self.sums_kernel(

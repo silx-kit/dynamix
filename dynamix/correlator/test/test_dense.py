@@ -110,10 +110,9 @@ class TestDense(unittest.TestCase):
         )
         t0 = time.perf_counter()
         res = correlator.correlate(
-            self.dataset.data
-        )
+            self.dataset.data,  calc_std=True)
         logger.info("OpenCL dense correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
-        self.compare(res, "OpenCL dense correlator")
+        self.compare(res[0], "OpenCL dense correlator")
 
 
     def test_matmul_correlator(self):
