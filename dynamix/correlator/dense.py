@@ -273,6 +273,92 @@ class DenseCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Corr 1D kernel")
 
 
+class DenseOrderedCorrelator(OpenclCorrelator):
+
+    kernel_files = ["dense_ordered_correlator.cl"]
+    WG = 128 # this is the optimal workgroup size
+
+    def __init__(
+        self, shape, nframes,
+        qmask=None, dtype="B", weights=None, extra_options={},
+        ctx=None, devicetype="all", platformid=None, deviceid=None,
+        block_size=None, memory=None, profile=False
+    ):
+        """
+        Class for OpenCL dense correlator.
+        
+        Performs the re-ordering of pixels prior to any calculation to speed-up things.
+        Doubles the GPU memory occupation by duplicating the stack !
+        """
+        super(DenseOrderedCorrelator, self).__init__(
+            shape, nframes, qmask=qmask, dtype=dtype, weights=weights,
+            extra_options=extra_options,
+            ctx=ctx, devicetype=devicetype, platformid=platformid,
+            deviceid=deviceid, block_size=block_size, memory=memory,
+            profile=profile
+        )
+        self._set_dtype(np.uint8, output=np.float32, sums=np.uint64)
+        self._setup_kernels()
+        self._allocate_arrays()
+
+    def _setup_kernels(self):
+        kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
+        self.compile_kernels(
+            kernel_files=kernel_files,
+            compile_options=[
+                "-DDTYPE=%s" % self.c_dtype,
+                "-DDTYPE_SUMS=%s" % self.c_sums_dtype,
+                "-DN_FRAMES=%d" % self.nframes,
+                "-DSUM_WG_SIZE=%d" % self.WG,
+            ]
+        )
+        self.wg = (self.WG, 1, 1)
+        self.grid = (self.WG, self.nframes)
+
+    def _allocate_arrays(self):
+        self.d_frames = parray.zeros(
+            self.queue,
+            (self.nframes,) + self.shape,
+            self.dtype
+        )
+        self._old_d_frames = None
+        self.d_sums = parray.zeros(
+            self.queue,
+            self.output_shape,
+            self.sums_dtype
+        )
+        self.d_sums_f = parray.zeros(
+            self.queue,
+            self.output_shape,
+            self.output_dtype,
+        )
+        self.d_output = parray.zeros(
+            self.queue,
+            (self.n_bins, self.nframes),
+            np.float32
+        )
+
+    def _normalize_sums(self):
+        if self.n_bins == 0:
+            self.d_sums_f[:] *= self.scale_factors[0]
+        else:
+            for i, factor in enumerate(self.scale_factors.values()):
+                self.d_sums_f[i] /= np.array([factor], dtype=self.output_dtype)[0]
+        self.d_sums_f.finish()
+
+    def correlate(self, frames, calc_std=False):
+        self._set_data({"frames": frames})
+        self.profile_add(evt, "Dense ordered correlator")
+
+        self._reset_arrays(["frames"])
+
+        return self.d_output.get()
+        if calc_std:
+            return CorrelationResult(self.d_output.get(), self.d_output.get())
+        else:
+            return self.d_output.get()
+
+
 class FFTCorrelator(BaseCorrelator):
 
     def __init__(self, shape, nframes,
