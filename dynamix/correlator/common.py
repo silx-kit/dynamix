@@ -152,14 +152,15 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         self._set_weights(weights)
         self.is_cpu = (self.device.type == "CPU")
 
-    def _set_dtype(self, dtype="f"):
+    def _set_dtype(self, input_=np.float32, output=np.float32, sums=np.int32, idx=np.int32):
         # add checks ?
-        self.dtype = dtype
-        self.output_dtype = np.float32  # TODO custom ?
-        self.sums_dtype = np.uint32  # TODO custom ?
+        self.dtype = np.dtype(input_)
+        self.output_dtype = np.dtype(output)
+        self.sums_dtype = np.dtype(sums)
+        self.idx_dtype = np.dtype(idx)
         self.c_dtype = dtype_to_ctype(self.dtype)
         self.c_sums_dtype = dtype_to_ctype(self.sums_dtype)
-        self.idx_c_dtype = "int"  # TODO custom ?
+        self.c_idx_dtype = dtype_to_ctype(self.c_sums_dtype)
 
     def _allocate_memory(self):
         # self.d_norm_mask = parray.to_device(self.queue, self.weights)
