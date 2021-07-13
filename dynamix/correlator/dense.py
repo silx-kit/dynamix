@@ -317,14 +317,9 @@ class DenseOrderedCorrelator(OpenclCorrelator):
         self.correlator_kernel = self.kernels.get_kernel("correlator_multiQ_ordered")
         
     def _allocate_arrays(self):
-        self.d_frames = parray.zeros(self.queue,
-                                     (self.nframes,) + self.shape,
-                                     self.dtype
-                                     )
-        self._old_d_frames = None
-        self.d_ordered = parray.zeros(self.queue,
-                                      (self.nframes, (self.qmask_ptr[-1]-self.qmask_ptr[1])),
-                                       self.dtype)
+        self.d_qmask_ptr = parray.to_device(self.queue, self.qmask_ptr)
+        
+        self.d_qmask_pix = parray.to_device(self.queue, self.qmask_pix)
 
         self.d_output_avg = parray.zeros(self.queue,
                                          (self.n_bins, self.nframes),
@@ -334,9 +329,16 @@ class DenseOrderedCorrelator(OpenclCorrelator):
                                          (self.n_bins, self.nframes),
                                          self.output_dtype)
 
-        self.d_qmask_ptr = parray.to_device(self.queue, self.qmask_ptr)
-        
-        self.d_qmask_pix = parray.to_device(self.queue, self.qmask_pix)
+        self.d_frames = parray.zeros(self.queue,
+                                     (self.nframes,) + self.shape,
+                                     self.dtype
+                                     )
+        self._old_d_frames = None
+        self.d_ordered = parray.zeros(self.queue,
+                                      (self.nframes, (self.qmask_ptr[-1]-self.qmask_ptr[1])),
+                                       self.dtype)
+
+
 
         
     def correlate(self, frames, calc_std=False):
