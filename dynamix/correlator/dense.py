@@ -313,47 +313,47 @@ class DenseOrderedCorrelator(OpenclCorrelator):
             ]
         )
         self.wg = (self.WG, 1, 1)
-        self.grid = (self.WG, self.nframes)
-
+        self.grid = (self.WG, self.n_bins, self.nframes)
+        self.reorder_kernel = self.kernels.get_kernel("multiQ_reorder")
+        self.correlator_kernel = self.kernels.get_kernel("correlator_multiQ_ordered")
     def _allocate_arrays(self):
-        self.d_frames = parray.zeros(
-            self.queue,
-            (self.nframes,) + self.shape,
-            self.dtype
-        )
+        self.d_frames = parray.zeros(self.queue,
+                                     (self.nframes,) + self.shape,
+                                     self.dtype
+                                     )
         self._old_d_frames = None
-        self.d_sums = parray.zeros(
-            self.queue,
-            self.output_shape,
-            self.sums_dtype
-        )
-        self.d_sums_f = parray.zeros(
-            self.queue,
-            self.output_shape,
-            self.output_dtype,
-        )
-        self.d_output = parray.zeros(
-            self.queue,
-            (self.n_bins, self.nframes),
-            np.float32
-        )
-
-    def _normalize_sums(self):
-        if self.n_bins == 0:
-            self.d_sums_f[:] *= self.scale_factors[0]
-        else:
-            for i, factor in enumerate(self.scale_factors.values()):
-                self.d_sums_f[i] /= np.array([factor], dtype=self.output_dtype)[0]
-        self.d_sums_f.finish()
-
+        self.d_output_avg = parray.zeros(self.queue,
+                                         (self.n_bins, self.nframes),
+                                         self.output_dtype)
+        self.d_output_std = parray.zeros(self.queue,
+                                         (self.n_bins, self.nframes),
+                                         self.output_dtype)
+        self.d_qmask_ptr = parray.to_device(self.queue, self.qmask_ptr)
+        self.d_qmask_pix = parray.to_device(self.queue, self.qmask_pix)
+        self.d_ordered = parray.zeros(self.queue,
+                                      (self.nframes, (self.qmask_ptr[-1]-self.qmask_ptr[1])),
+                                       self.dtype)
+        
     def correlate(self, frames, calc_std=False):
         self._set_data({"frames": frames})
-        
+        evt = self.reorder_kernel(self.queue,  self.grid, self.wg,
+                                  self.d_frames.data,
+                                  self.d_q_mask_ptr.data,
+                                  self.d_q_mask_pix.data,
+                                  np.int32(self.nframes),
+                                  np.int32(self.nbins),
+                                  np.int32(np.prod(self.shape)),
+                                  self.d_ordered.data)
+        self.profile_add(evt, "Re-order pixels")
+        evt = self.correlator_kernel(self.queue, self.grid, self.wg,
+                                     self.d_ordered.data,
+                                     self.d_qmask_ptr.data,
+                                     self.d_output_avg.data,
+                                     self.d_output.std.data,
+                                     np.int32(self.nframes),
+                                     np.int32(self.n_bins)
+                                             )
         self.profile_add(evt, "Dense ordered correlator")
-
-        self._reset_arrays(["frames"])
-
-        return self.d_output.get()
         if calc_std:
             return CorrelationResult(self.d_output.get(), self.d_output.get())
         else:
