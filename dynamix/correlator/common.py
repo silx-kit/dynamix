@@ -157,6 +157,7 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
             profile=profile
         )
         BaseCorrelator.__init__(self)
+        logger.info("Working on %s", self.device.name)
         self._set_parameters(shape, nframes, dtype, qmask, weights, scale_factor, extra_options)
         self._allocate_memory()
 
