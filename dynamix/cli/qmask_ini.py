@@ -135,13 +135,13 @@ def main():
     i_bands = []
     n = 0
     for i in qp:
-      i_qp[n] = rad[(np.abs(rad[:,0]-i)==(np.abs(rad[:,0]-i).min())),1]
-      ind1 = np.where((rad[:,0]>=i-width_q/2)&(rad[:,0]<=i+width_q/2))[0]
-      i_bands.append(ind1)
-      n += 1
-      indq = np.where(np.abs(r_q-i)<=width_q/2)
-      qmask[indq] = n
-      print("Number of pixels per q %d %d" % (n,qmask[indq].size))
+        i_qp[n] = rad[(np.abs(rad[:,0]-i)==(np.abs(rad[:,0]-i).min())),1]
+        ind1 = np.where((rad[:,0]>=i-width_q/2)&(rad[:,0]<=i+width_q/2))[0]
+        i_bands.append(ind1)
+        n += 1
+        indq = np.where(np.abs(r_q-i)<=width_q/2)
+        qmask[indq] = n
+        print("Number of pixels per q %d %d" % (n,qmask[indq].size))
     qmask[mask>0] = 0
     np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
     qmask[qmask>number_q] = 0

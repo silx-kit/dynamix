@@ -4,10 +4,8 @@
 import shutil
 import sys
 import os
-import _pickle as cPickle
 import numpy as np
 import time
-import fabio
 from dynamix.io import readdata, EdfMethods, h5reader
 from dynamix.tools import tools
 
@@ -460,11 +458,11 @@ def main():
     exit()
 
 
-    ############ plotting ############################
-    from dynamix.plot.draw_result import plot_cf, show_trc
-
-    plot_cf(w,sname)
-    show_trc(t,sname)
+    # ############ plotting ############################
+    # from dynamix.plot.draw_result import plot_cf, show_trc
+    #
+    # plot_cf(w,sname)
+    # show_trc(t,sname)
 
 
 

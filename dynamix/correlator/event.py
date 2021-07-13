@@ -159,6 +159,49 @@ class EventCorrelator(OpenclCorrelator):
 
         return self.d_res.get()
 
+    def correlate(self, vol_times, vol_data, offsets):
+        self._check_event_arrays(vol_times, vol_data, offsets)
+        self._set_data({
+            "vol_times": vol_times,
+            "vol_data": vol_data,
+            "offsets": offsets
+        })
+
+        self.d_res.fill(0)
+        self.d_sums.fill(0)
+
+        evt = self.correlation_kernel(
+            self.queue,
+            self.grid,
+            self.wg,
+            self.d_vol_times.data,
+            self.d_vol_data.data,
+            self.d_offsets.data,
+            self.d_qmask.data,
+            self.d_res_int.data,
+            self.d_sums.data,
+            np.int32(self.shape[1]),
+            np.int32(self.nframes)
+        )
+        evt.wait()
+        self.profile_add(evt, "Event correlator")
+
+        evt = self.normalization_kernel(
+            self.queue,
+            (self.nframes, self.n_bins),
+            None, # tune wg ?
+            self.d_res_int.data,
+            self.d_res.data,
+            self.d_sums.data,
+            self.d_scale_factors.data,
+            np.int32(self.nframes)
+        )
+        evt.wait()
+        self.profile_add(evt, "Normalization")
+
+        self._reset_arrays(["vol_times", "vol_data", "offsets"])
+
+        return self.d_res.get()
 
 
 class FramesCompressor(object):

@@ -56,19 +56,19 @@ def mread_eiger(mfilename, mdataout, ind_g, mNp, nx):
 ###########################################
 
 
-######### processing the file for CCD ##############
+# ######### processing the file for CCD ##############
 def mread_ccd(mfilename, mdataout, darkimg, lth, bADU, tADU, mNp, aduph, nx, ny):
     for mfile in mfilename:
         matr = np.asfarray(EdfMethods.loadedf(mfile), dtype=np.float32)
-        try:
-            matr[ind] = 0
-        except:
-            pass
+        # try:
+        #     matr[ind] = 0
+        # except:
+        #     pass
         msumpix, mpix, tmp = dropimgood(matr, darkimg, lth, bADU, tADU, mNp, aduph, nx, ny)  # dropletize CCD frames
         mpix = mpix[:msumpix]
         mdataout.put([mpix, msumpix, tmp])
     mdataout.close()
-###########################################
+# ###########################################
 
 
 def get_data(datdir, prefd, sufd, nf1, nf2):
@@ -211,23 +211,13 @@ def get_ccd_event_data(datdir, prefd, sufd, nf1, nf2, darkdir, df1, df2, sname, 
     darkfilenames = nfiles.filename(darkdir + prefd, sufd, df1, df2)
     ndarks = 0
     for dfile in darkfilenames:
-        try:
-            darkimg += np.asfarray(EdfMethods.loadedf(dfile), dtype=np.float32)
-            ndarks += 1
-        except:
+        if ndarks == 0:
             darkimg = np.asfarray(EdfMethods.loadedf(dfile), dtype=np.float32)
-            ndarks += 1
+        else:
+            darkimg += np.asfarray(EdfMethods.loadedf(dfile), dtype=np.float32)
+        ndarks += 1
 
     darkimg = darkimg / ndarks
-
-    # try :
-    #    darkimg = np.asfarray(EdfMethods.loadedf(savdir+'dark_'+sname+'.edf'),dtype=np.float32)#*0
-    # except:
-        # print "make dark"
-        # os.system('/data/id10/inhouse/Programs/wxpcs/darkedft.py '+argv[1])
-        # darkimg = asfarray(loadedf(savdir+'dark_'+sname+'.edf'),dtype=float32)#*0
-        # print("read default dark")
-    #    darkimg = np.asfarray(EdfMethods.loadedf(savdir+'dark_Pd_glass.edf'),dtype=np.float32)#*0
 
     pixels = []
     s = []
@@ -263,13 +253,13 @@ def get_ccd_event_data(datdir, prefd, sufd, nf1, nf2, darkdir, df1, df2, sname, 
     print('reading of %d files took %5.2f sec' % (lfilenames, dtime))
 
     if not os.path.exists(savdir):
-        answ = raw_input("create a director (y)/n")
+        answ = input("create a director (y)/n")
         if answ == "n":
-           print("exit")
-           exit()
+            print("exit")
+            exit()
         else:
-           os.makedirs(savdir)
-           print("directory " + savdir + " has been created")
+            os.makedirs(savdir)
+            print("directory " + savdir + " has been created")
     return pixels, s, for_norm, img
 
 
@@ -343,13 +333,13 @@ def get_eiger_event_datan(datdir, prefd, sufd, nf1, nf2, sname, mNp, savdir, mas
         it += 1
 
     if not os.path.exists(savdir):
-        answ = raw_input("create a director (y)/n")
+        answ = input("create a director (y)/n")
         if answ == "n":
-           print("exit")
-           exit()
+            print("exit")
+            exit()
         else:
-           os.makedirs(savdir)
-           print("directory " + savdir + " has been created")
+            os.makedirs(savdir)
+            print("directory " + savdir + " has been created")
     afr = afr / n_frames
     afr = np.reshape(afr, (nx, ny))
     mask = np.reshape(mask, (nx, ny))
@@ -394,12 +384,11 @@ def get_ccd_event_datan(datdir, prefd, sufd, nf1, nf2, darkdir, df1, df2, sname,
     darkfilenames = nfiles.filename(darkdir + prefd, sufd, df1, df2)
     ndarks = 0
     for dfile in darkfilenames:
-        try:
-            darkimg += np.asfarray(EdfMethods.loadedf(dfile), dtype=np.float32)
-            ndarks += 1
-        except:
+        if ndarks == 0:
             darkimg = np.asfarray(EdfMethods.loadedf(dfile), dtype=np.float32)
-            ndarks += 1
+        else:
+            darkimg += np.asfarray(EdfMethods.loadedf(dfile), dtype=np.float32)
+        ndarks += 1
 
     darkimg = darkimg / ndarks
 

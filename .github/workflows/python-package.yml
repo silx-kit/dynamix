@@ -27,7 +27,6 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install flake8
-        source ci/intel_opencl_icd.sh
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
     - name: Lint with flake8
       run: |
@@ -37,4 +36,7 @@ jobs:
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
     - name: Test with run_tests.py
       run: |
+        source ci/intel_opencl_icd.sh
+        python ci/info_platform.py
+        echo $OCL_ICD_VENDORS $CPATH
         python run_tests.py

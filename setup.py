@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-#from setuptools import setup, Extension
-from numpy.distutils.core import setup, Extension
+from setuptools import setup
+from numpy.distutils.core import Extension
 import os
 
 def get_version():
@@ -30,17 +30,18 @@ def setup_package():
         "cli",
     ]
     ext = [Extension(name='dynamix.correlator.WXPCS',
-                 sources=['dynamix/correlator/fecorr.f',
-                 'dynamix/correlator/fecorrt.f',
-                 'dynamix/correlator/droplet3.f',
-                 'dynamix/correlator/dropimgood.f',
-                 'dynamix/correlator/eigerpix.f'],
-                 f2py_options=['--verbose'])]
+                 sources=['dynamix/correlator/WXPCS/fecorr.f',
+                          'dynamix/correlator/WXPCS/fecorrt.f',
+                          'dynamix/correlator/WXPCS/droplet3.f',
+                          'dynamix/correlator/WXPCS/dropimgood.f',
+                          'dynamix/correlator/WXPCS/eigerpix.f'],
+                 # f2py_options=['--verbose'])
+            )]
     packages = ["dynamix", "dynamix.test"]
     package_dir = {"dynamix": "dynamix",
                    "dynamix.test": "dynamix/test"}
     for f in packages_folders:
-        modulename = str("dynamix.%s" % f)
+        modulename = f"dynamix.{f}"
         packages.append(modulename)
         package_dir[modulename] = os.path.join("dynamix", f)
         module_test_dirname = os.path.join(package_dir[modulename], "test")

@@ -33,8 +33,8 @@ def ncorrelate(evs,tms,cnt,q,n_frames):
                 n = k+1                   
                 mint[qp,t0] += evs[k]
                 for f in range(j+1,cnt[i],1):
-                   cc[qp,t0,tms[n]] +=  evs[k]*evs[n]
-                   n += 1 
+                    cc[qp,t0,tms[n]] +=  evs[k]*evs[n]
+                    n += 1 
                 k += 1 
         else:
             k += cnt[i]
@@ -58,8 +58,8 @@ def ncorrelatep(evs,tms,cnt,q,n_frames,nproc):
                     n = k+1
                     mint[proc, qp,t0] += evs[k]
                     for f in range(j+1,cnt[i],1):
-                       cc[proc, qp,t0,tms[n]] +=  evs[k]*evs[n]
-                       n += 1
+                        cc[proc, qp,t0,tms[n]] +=  evs[k]*evs[n]
+                        n += 1
                     k += 1
             else:
                 k += cnt[i]
@@ -91,8 +91,8 @@ def ncorrelatepm(evs,tms,cnt,q,n_frames,nproc):
                         n = k+1
                         mint[qp,t0] += evs[k]
                         for f in range(j+1,cnt[i],1):
-                           cc[qp,t0,tms[n]] +=  evs[k]*evs[n]
-                           n += 1
+                            cc[qp,t0,tms[n]] +=  evs[k]*evs[n]
+                            n += 1
                     k += 1
             else:
                 k += cnt[i]
@@ -153,7 +153,7 @@ def nbecorrts_q(events,times,cnt,qqmask, n_frames, calc_std=False, ttcf_par=0):
             tmp = np.diag(trc,k=1)
             tmp = np.mean(tmp[tmp>0])
             for j in range(n_frames-1):
-               trc[j,j]=tmp   
+                trc[j,j]=tmp   
             del tmp
 
     print("Total correlation time %2.2f sec" % (time.time()-t0))
@@ -224,7 +224,7 @@ def ecorrts_q(pixels,s,qqmask, calc_std=False, ttcf_par=0):
             tmp = np.diag(trc,k=1)
             tmp = np.mean(tmp[tmp>0])
             for j in range(lpixels-1):
-               trc[j,j]=tmp   
+                trc[j,j]=tmp   
             del tmp
     print("Total correlation time %2.2f sec" % (time.time()-t0))
     #return wcf,mtcf,cor
@@ -243,7 +243,7 @@ def ecorrts(pixels,s,for_norm):
     rpixels = range(lpixels)
     t=[]
     for t1 in rpixels:
-      t += [t1]*s[t1]
+        t += [t1]*s[t1]
     #print("time for pre loop "+str(time()-timee))
     pix = np.concatenate(pixels).ravel()
     #print('start sorting')
@@ -279,11 +279,11 @@ def ecorrts(pixels,s,for_norm):
     x = np.ones((lpixels-1,3))
     x[:,0] = np.arange(1,lpixels)
     for i in range(1,lpixels):
-      dia = np.diag(cor,k=i)
-      sdia = np.diag(norm,k=i)
-      ind = np.where(np.isfinite(dia))
-      x[i-1,1] = np.mean(dia[ind])/np.mean(sdia[ind])
-      x[i-1,2] = np.std(dia[ind]/sdia[ind])/len(sdia[ind])**0.5
+        dia = np.diag(cor,k=i)
+        sdia = np.diag(norm,k=i)
+        ind = np.where(np.isfinite(dia))
+        x[i-1,1] = np.mean(dia[ind])/np.mean(sdia[ind])
+        x[i-1,2] = np.std(dia[ind]/sdia[ind])/len(sdia[ind])**0.5
     wcf = x+0
     mtcf = cftomt_testing(x)
     cor /= norm

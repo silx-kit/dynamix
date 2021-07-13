@@ -1,5 +1,4 @@
 from os.path import isfile
-from .EdfFile3 import EdfFile, EdfGzipFile
 import fabio
 ####################################
 #--- Standard EDF w/r functions ---#
@@ -19,8 +18,8 @@ def loadedf(filename):
 
 def saveedf(filename, data, imgn=0):
     try:
-        newf = EdfFile(filename)
-        newf.WriteImage({}, data, imgn)
+        fimg = fabio.edfimage.EdfImage(data=data)
+        fimg.save(filename)
         print("file is saved to ", filename)
         return
     except:
