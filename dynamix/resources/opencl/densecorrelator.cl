@@ -114,31 +114,30 @@ kernel void compute_sums_dense(
     #endif
 
     // No synchronization needed on Nvidia hardware beyond this point
-    if (tid < 32) {
+    if (tid < 32)
         REDUCE_SHARED_ITEMS(32)
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    if (tid < 16) {
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    if (tid < 16)
         REDUCE_SHARED_ITEMS(16)
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
+    barrier(CLK_LOCAL_MEM_FENCE);
 
-    if (tid < 8) {
+    if (tid < 8)
         REDUCE_SHARED_ITEMS(8)
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    if (tid < 4) {
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
+    if (tid < 4)
         REDUCE_SHARED_ITEMS(4)
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    if (tid < 2) {
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (tid < 2)
         REDUCE_SHARED_ITEMS(2)
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
-    if (tid == 0) {
+    barrier(CLK_LOCAL_MEM_FENCE);
+
+    if (tid == 0)
         REDUCE_SHARED_ITEMS(1)
-        barrier(CLK_LOCAL_MEM_FENCE);
-    }
+    barrier(CLK_LOCAL_MEM_FENCE);
+    
     if (tid < NUM_BINS) { // tid <-> q
         sums[tid * Nt + frame_id] = s_buf[tid*(2*SUM_WG_SIZE) + 0];
     }
