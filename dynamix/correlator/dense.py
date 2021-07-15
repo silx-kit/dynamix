@@ -321,20 +321,20 @@ class DenseOrderedCorrelator(OpenclCorrelator):
         
         self.d_qmask_pix = parray.to_device(self.queue, self.qmask_pix)
 
-        self.d_output_avg = parray.zeros(self.queue,
+        self.d_output_avg = parray.empty(self.queue,
                                          (self.n_bins, self.nframes),
                                          self.output_dtype)
 
-        self.d_output_std = parray.zeros(self.queue,
+        self.d_output_std = parray.empty(self.queue,
                                          (self.n_bins, self.nframes),
                                          self.output_dtype)
 
-        self.d_frames = parray.zeros(self.queue,
+        self.d_frames = parray.empty(self.queue,
                                      (self.nframes,) + self.shape,
                                      self.dtype
                                      )
         self._old_d_frames = None
-        self.d_ordered = parray.zeros(self.queue,
+        self.d_ordered = parray.empty(self.queue,
                                       (self.nframes, (self.qmask_ptr[-1]-self.qmask_ptr[1])),
                                        self.dtype)
 
