@@ -53,7 +53,7 @@ pip install [--user] dynamix
 To install the current development version:
 
 ```bas
-pip instal [--user] git+https://github.com/silx-kit/dynamix
+pip install [--user] git+https://github.com/silx-kit/dynamix
 ```
 
 ## Usage
