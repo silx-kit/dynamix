@@ -240,9 +240,8 @@ class DenseCorrelator(OpenclCorrelator):
             np.int32(self.shape[0]),
             np.int32(self.nframes),
             )
-        
+
         self.profile_add(evt, "Dense correlator")
-        print(self.d_output.get())
         self._reset_arrays(["frames"])
 
         return self.d_output.get()  # get ?
