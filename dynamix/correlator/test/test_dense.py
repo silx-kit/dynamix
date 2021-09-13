@@ -28,16 +28,16 @@
 
 __authors__ = ["P. Paleo"]
 __license__ = "MIT"
-__date__ = "06/07/2021"
+__date__ = "13/07/2021"
 
 
-from time import time
+import time
 import logging
 import unittest
 import numpy as np
 from silx.opencl.common import ocl
 from dynamix.test.utils import XPCSDataset
-from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator
+from dynamix.correlator.dense import DenseCorrelator, py_dense_correlator, FFTWCorrelator, MatMulCorrelator, DenseOrderedCorrelator
 from dynamix.correlator.cuda import CublasMatMulCorrelator, CUFFTCorrelator, CUFFT, cublas
 
 # logging.basicConfig(level=logging.INFO)
@@ -66,7 +66,7 @@ class TestDense(unittest.TestCase):
     def compute_reference_correlation(cls):
         if cls.ref is not None:
             return # dont re-compute ref
-        t0 = time()
+        t0 = time.perf_counter()
         ref = np.zeros(
             (cls.dataset.dataset_desc.bins, cls.dataset.dataset_desc.nframes),
             dtype=np.float32
@@ -74,7 +74,7 @@ class TestDense(unittest.TestCase):
         for bin_val in range(1, cls.dataset.dataset_desc.bins+1):
             mask = (cls.dataset.qmask == bin_val)
             ref[bin_val-1] = py_dense_correlator(cls.dataset.data, mask)
-        logger.info("Numpy dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        logger.info("Numpy dense correlator took %.1f ms" % ((time.perf_counter() - t0)*1e3))
         cls.ref = ref
 
     @classmethod
@@ -91,7 +91,7 @@ class TestDense(unittest.TestCase):
 
     def compare(self, res, method_name):
         errors = res - self.ref
-        errors_max = np.max(np.abs(errors), axis=1)
+        errors_max = abs(errors).max(axis=1)
         for bin_idx in range(errors_max.shape[0]):
             self.assertLess(
                 errors_max[bin_idx], self.tol,
@@ -101,29 +101,28 @@ class TestDense(unittest.TestCase):
     def test_dense_correlator(self):
         if ocl is None:
             self.skipTest("Need pyopencl and a working OpenCL device")
-        self.correlator = DenseCorrelator(
+        correlator = DenseCorrelator(
             self.shape,
             self.nframes,
             qmask=self.dataset.qmask,
             dtype=self.dataset.dataset_desc.dtype,
             profile=True
         )
-        t0 = time()
-        res = self.correlator.correlate(
-            self.dataset.data
-        )
-        logger.info("OpenCL dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        t0 = time.perf_counter()
+        res = correlator.correlate(
+            self.dataset.data)
+        logger.info("OpenCL dense correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
         self.compare(res, "OpenCL dense correlator")
 
 
     def test_matmul_correlator(self):
         correlator = MatMulCorrelator(
-            self.shape, self.nframes, self.dataset.qmask
-        )
-        t0 = time()
-        res = correlator.correlate(self.dataset.data)
-        logger.info("Matmul correlator took %.1f ms" % ((time() - t0)*1e3))
-        self.compare(res, "Matmul correlator")
+            self.shape, self.nframes, self.dataset.qmask)
+        
+        t0 = time.perf_counter()
+        res = correlator.correlate(self.dataset.data, calc_std=True)
+        logger.info("Matmul correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
+        self.compare(res[0], "Matmul correlator")
 
 
     def test_cuda_matmul_correlator(self):
@@ -132,41 +131,56 @@ class TestDense(unittest.TestCase):
         correlator = CublasMatMulCorrelator(
             self.shape, self.nframes, self.dataset.qmask
         )
-        t0 = time()
+        t0 = time.perf_counter()
         res = correlator.correlate(self.dataset.data)
-        logger.info("Cublas Matmul correlator took %.1f ms" % ((time() - t0)*1e3))
+        logger.info("Cublas Matmul correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
         self.compare(res, "Cublas Matmul correlator")
 
 
     def test_fftw_dense_correlator(self):
         if pyfftw is None:
             self.skipTest("Need pyfftw")
-        self.fftcorrelator = FFTWCorrelator(
+        fftcorrelator = FFTWCorrelator(
             self.shape,
             self.nframes,
             qmask=self.dataset.qmask,
             extra_options={"save_fft_plans": False}
         )
-        t0 = time()
-        res = self.fftcorrelator.correlate(self.dataset.data)
-        logger.info("FFTw dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        t0 = time.perf_counter()
+        res = fftcorrelator.correlate(self.dataset.data)
+        logger.info("FFTw dense correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
         self.compare(res, "FFTw dense correlator")
 
 
     def test_cufft_dense_correlator(self):
         if CUFFT is None:
             self.skipTest("Need pycuda scikit-cuda")
-        self.fftcorrelator = CUFFTCorrelator(
+        fftcorrelator = CUFFTCorrelator(
             self.shape,
             self.nframes,
             qmask=self.dataset.qmask,
             extra_options={"save_fft_plans": False}
         )
-        t0 = time()
-        res = self.fftcorrelator.correlate(self.dataset.data)
-        logger.info("CUFFT dense correlator took %.1f ms" % ((time() - t0)*1e3))
+        t0 = time.perf_counter()
+        res = fftcorrelator.correlate(self.dataset.data)
+        logger.info("CUFFT dense correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
         self.compare(res, "CUFFT dense correlator")
 
+    def test_opencl_dense_correlator(self):
+        if ocl is None:
+            self.skipTest("Need pyopencl and a working OpenCL device")
+        correlator = DenseOrderedCorrelator(
+            self.shape,
+            self.nframes,
+            qmask=self.dataset.qmask,
+            dtype=self.dataset.dataset_desc.dtype,
+        )
+        t0 = time.perf_counter()
+        res = correlator.correlate(
+            self.dataset.data
+        )
+        logger.info("OpenCL dense reordered correlator took %.1f ms", ((time.perf_counter() - t0)*1e3))
+        self.compare(res, "OpenCL dense reordered correlator")
 
 
 

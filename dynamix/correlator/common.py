@@ -1,10 +1,12 @@
-import numpy as np
+import logging
 from os import linesep
-
+import numpy as np
+from scipy.sparse import csc_matrix
 import pyopencl.array as parray
 from pyopencl.tools import dtype_to_ctype
 from silx.opencl.common import pyopencl as cl
 from silx.opencl.processing import OpenclProcessing, KernelContainer
+logger = logging.getLogger(__name__)
 
 
 class BaseCorrelator(object):
@@ -18,6 +20,9 @@ class BaseCorrelator(object):
         self.output_shape = None
         self.weights = None
         self.scale_factors = None
+        self.qmask = None
+        self.qmask_ptr = None # Containes the start/stop position of each bin in qmask_pix
+        self.qmask_pix = None # Contains the index of pixels for each bin in qmask
 
     def _set_parameters(self, shape, nframes, qmask, scale_factor, extra_options):
         self.nframes = nframes
@@ -34,7 +39,7 @@ class BaseCorrelator(object):
             self.shape = shape
 
     def _set_qmask(self, qmask=None):
-        self.qmask = None
+        
         if qmask is None:
             self.bins = np.array([1], dtype=np.int32)
             self.n_bins = 1
@@ -44,6 +49,17 @@ class BaseCorrelator(object):
             self.n_bins = self.qmask.max()
             self.bins = np.arange(1, self.n_bins + 1, dtype=np.int32)
         self.output_shape = (self.n_bins, self.nframes)
+        
+        #Calculate the position of pixels in qmask:
+        positions = np.arange(self.n_bins + 1, dtype=np.int32)
+        row = np.digitize(self.qmask.ravel(), positions) - 1 
+        size = row.size
+        col = np.arange(size)
+        dat = np.ones(size, dtype=np.uint8)
+        csc = csc_matrix((dat, (row, col)), shape = (self.n_bins + 1, size))
+        csr = csc.tocsr()
+        self.qmask_pix = csr.indices # Contains the index of pixels for each bin in qmask
+        self.qmask_ptr = csr.indptr  # Containes the start/stop position of each bin in qmask_pix
 
     def _set_weights(self, weights=None):
         if weights is None:
@@ -143,6 +159,7 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
             profile=profile
         )
         BaseCorrelator.__init__(self)
+        logger.info("Working on %s", self.device.name)
         self._set_parameters(shape, nframes, dtype, qmask, weights, scale_factor, extra_options)
         self._allocate_memory()
 
@@ -152,14 +169,15 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         self._set_weights(weights)
         self.is_cpu = (self.device.type == "CPU")
 
-    def _set_dtype(self, dtype="f"):
+    def _set_dtype(self, input_=np.float32, output=np.float32, sums=np.int32, idx=np.int32):
         # add checks ?
-        self.dtype = dtype
-        self.output_dtype = np.float32  # TODO custom ?
-        self.sums_dtype = np.uint32  # TODO custom ?
+        self.dtype = np.dtype(input_)
+        self.output_dtype = np.dtype(output)
+        self.sums_dtype = np.dtype(sums)
+        self.idx_dtype = np.dtype(idx)
         self.c_dtype = dtype_to_ctype(self.dtype)
         self.c_sums_dtype = dtype_to_ctype(self.sums_dtype)
-        self.idx_c_dtype = "int"  # TODO custom ?
+        self.c_idx_dtype = dtype_to_ctype(self.idx_dtype)
 
     def _allocate_memory(self):
         # self.d_norm_mask = parray.to_device(self.queue, self.weights)
@@ -176,10 +194,10 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
             my_array_name = "d_" + arr_name
             my_array = getattr(self, my_array_name)
             assert my_array.shape == array.shape, "%s should have shape %s, got %s" % (my_array_name, str(my_array.shape), str(array.shape))
-
-            assert my_array.dtype == array.dtype
+            assert my_array.dtype == array.dtype, "%s should have dtype %s, got %s" % (my_array_name, my_array.dtype, array.dtype)
             if isinstance(array, np.ndarray):
                 my_array.set(array)
+                self.profile_add(my_array.events[-1], f"copy {arr_name} H->D")
             elif isinstance(array, parray.Array):
                 setattr(self, "_old_" + my_array_name, my_array)
                 setattr(self, my_array_name, array)

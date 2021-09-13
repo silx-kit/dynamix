@@ -59,7 +59,7 @@ class SparseCorrelator(OpenclCorrelator):
             compile_options=[
                 "-DIMAGE_WIDTH=%d" % self.shape[1],
                 "-DDTYPE=%s" % self.c_dtype,
-                "-DIDX_DTYPE=%s" % self.idx_c_dtype,
+                "-DIDX_DTYPE=%s" % self.c_idx_dtype,
                 "-DSUM_WG_SIZE=%d" % 1024, # TODO tune ?
             ]
         )
