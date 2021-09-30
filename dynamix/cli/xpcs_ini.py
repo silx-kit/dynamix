@@ -311,7 +311,7 @@ def main():
 
         #### plot results #######
         try:
-            plot_cf(res,sname+" Scan "+str(scan),toplot)
+            plot_cf(res,sname+" Scan "+str(scan),savdir,toplot)
         except: pass
 
         print("Saving trc")
@@ -432,7 +432,7 @@ def main():
 
         #### plot results #######
         try:
-            plot_cf(res,sname+" Scan "+str(scan),toplot)
+            plot_cf(res,sname+" Scan "+str(scan),savdir,toplot)
         except: pass
 
         print("Saving trc")
