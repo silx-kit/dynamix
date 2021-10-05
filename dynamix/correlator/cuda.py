@@ -120,8 +120,7 @@ class CublasMatMulCorrelator(MatMulCorrelator):
     def correlate(self, frames, calc_std=False, ttcf_par=0):
         res = np.zeros((self.n_bins, self.nframes-1), dtype=np.float32)
         frames_flat = frames.reshape((self.nframes, -1))
-        if calc_std:
-            dev = np.zeros_like(res)
+        dev = np.zeros_like(res)
         for i, bin_val in enumerate(self.bins):
             mask = (self.qmask.ravel() == bin_val)
             res[i] = self._correlate_matmul_cublas(frames_flat, mask)[1:]
