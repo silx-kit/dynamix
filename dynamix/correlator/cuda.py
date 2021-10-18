@@ -109,13 +109,15 @@ class CublasMatMulCorrelator(MatMulCorrelator):
         d_outer = cublas.dot(d_arr, d_arr, transb="T", handle=self.cublas_handle)
         d_means = skmisc.mean(d_arr, axis=1, keepdims=True)
         d_denom_mat = cublas.dot(d_means, d_means, transb="T", handle=self.cublas_handle)
+        
+        ttcf = skmisc.divide(d_outer, d_denom_mat)
 
         self.sum_diagonals(d_outer, self.d_sumdiags1)
         self.sum_diagonals(d_denom_mat, self.d_sumdiags2)
         self.d_sumdiags1 /= self.d_sumdiags2
         self.d_sumdiags1 /= npix
 
-        return self.d_sumdiags1.get()
+        return (self.d_sumdiags1.get()[1:], ttcf.get()/npix)
 
     def correlate(self, frames, calc_std=False, ttcf_par=0):
         res = np.zeros((self.n_bins, self.nframes-1), dtype=np.float32)
@@ -123,15 +125,14 @@ class CublasMatMulCorrelator(MatMulCorrelator):
         dev = np.zeros_like(res)
         for i, bin_val in enumerate(self.bins):
             mask = (self.qmask.ravel() == bin_val)
-            res[i] = self._correlate_matmul_cublas(frames_flat, mask)[1:]
+            (res[i],trc) = self._correlate_matmul_cublas(frames_flat, mask)
             
         if calc_std:
             print("This correlator dont provide standard deviation yet.")
             
-        if ttcf_par != 0:
-            print("This correlator dont provide two time correlation function yet.")
+#        if ttcf_par != 0:
+#            print("This correlator dont provide two time correlation function yet.")
             
-        trc = 0
         return CorrelationResult(res, dev, trc)
         #return res
 
