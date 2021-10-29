@@ -125,10 +125,14 @@ class CublasMatMulCorrelator(MatMulCorrelator):
         dev = np.zeros_like(res)
         for i, bin_val in enumerate(self.bins):
             mask = (self.qmask.ravel() == bin_val)
-            (res[i],trc) = self._correlate_matmul_cublas(frames_flat, mask)
+            (res[i],ttcf) = self._correlate_matmul_cublas(frames_flat, mask)
+            if bin_val == ttcf_par:
+                trc = ttcf
             
-        if calc_std:
-            print("This correlator dont provide standard deviation yet.")
+            if calc_std:
+                for j in range(dev.shape[1]):
+                    d = np.diag(ttcf, k=j+1)
+                    dev[i,j] = np.std(d) / np.sqrt(len(d)) 
             
 #        if ttcf_par != 0:
 #            print("This correlator dont provide two time correlation function yet.")
