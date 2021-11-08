@@ -60,46 +60,69 @@ class CublasMatMulCorrelator(MatMulCorrelator):
                 cublas.init() # cublas handle + allocator
                 handle = skmisc._global_cublas_handle
         self.cublas_handle = handle
-
-
+        
     def _compile_kernels(self):
         mod = SourceModule(
             """
-            // Extract the upper diagonals of a square (N, N) matrix.
+            // Tilt ttcf from (frames, frames) to (lag, age) ordinates
             __global__ void extract_upper_diags(float* matrix, float* diags, int N) {
                 int x = blockDim.x * blockIdx.x + threadIdx.x;
                 int y = blockDim.y * blockIdx.y + threadIdx.y;
                 if ((x >= N) || (y >= N) || (y > x)) return;
                 int pos = y*N+x;
                 int my_diag = x-y;
-                diags[my_diag * N + x] = matrix[pos];
+                diags[my_diag + (x+y)/2*N] = matrix[pos];
             }
+            
+            // Divide each ttcf elements according to the number of elements in the diagonal, performed in (lag, age).  Elements outside left triangle are set to 0. Average is then the sum of columns.
+            __global__ void trigl_avg_elms(float* matrix, float* avgs, int N) {
+                int x = blockDim.x * blockIdx.x + threadIdx.x;
+                int y = blockDim.y * blockIdx.y + threadIdx.y;
+                if ((x >= N) || (y >= N)) return;
+                int pos = y*N+x;
+                int Ne = (y+1)*2;
+                int Ne2 = (N-y-1)*2+1;
+                if(Ne > Ne2) { Ne = Ne2; }
+                if(x >= Ne) {
+                    avgs[pos] = 0;
+                } else {
+                    avgs[pos] = matrix[pos]/(1.*(N-x));
+                }
+            }
+            
+            // Compute the var elementwise, taking care of number or elements in the diagonal. Elements outside left triangle are set to 0. Standard deviation is then the sum of columns.
+            __global__ void trigl_vari_elms(float* matrix, float* vari, float* avgs, int N) {
+                int x = blockDim.x * blockIdx.x + threadIdx.x;
+                int y = blockDim.y * blockIdx.y + threadIdx.y;
+                if ((x >= N) || (y >= N)) return;
+                int pos = y*N+x;
+                int Ne = (y+1)*2;
+                int Ne2 = (N-y-1)*2+1;
+                if(Ne > Ne2) { Ne = Ne2; }
+                if(x >= Ne) {
+                    vari[pos] = 0;
+                } else {
+                    vari[pos] = ( matrix[pos] - avgs[x] )*( matrix[pos] - avgs[x] )/(1.*(N-x)*(N-x));
+                }
+            }
+            
             """
         )
+        
         self.extract_diags_kernel = mod.get_function("extract_upper_diags")
+        self.trigl_avg_elms = mod.get_function("trigl_avg_elms")
+        self.trigl_vari_elms = mod.get_function("trigl_vari_elms")
+        
         self._blocks = (32, 32, 1)
         self._grid = (
             updiv(self.nframes, self._blocks[0]),
             updiv(self.nframes, self._blocks[1]),
             1
         )
-        self.d_diags = garray.zeros((self.nframes, self.nframes), dtype=np.float32)
-        self.d_sumdiags1 = garray.zeros(self.nframes, dtype=np.float32)
-        self.d_sumdiags2 = garray.zeros_like(self.d_sumdiags1)
-        self._kern_args = [
-            None,
-            self.d_diags,
-            np.int32(self.nframes),
-        ]
-
-
-    def sum_diagonals(self, d_arr, d_out):
-        self.d_diags.fill(0)
-        self._kern_args[0] = d_arr.gpudata
-        self.extract_diags_kernel(*self._kern_args, grid=self._grid, block=self._blocks)
-        skmisc.sum(self.d_diags, axis=1, out=d_out)
-
-
+        self.d_ttcf = garray.zeros((self.nframes, self.nframes), dtype=np.float32)
+        self.d_average = garray.zeros(self.nframes, dtype=np.float32)
+        self.d_variance = garray.zeros_like(self.d_average)
+    
     def _correlate_matmul_cublas(self, frames_flat, mask):
         arr = np.ascontiguousarray(frames_flat[:, mask], dtype=np.float32)
         npix = arr.shape[1]
@@ -110,32 +133,34 @@ class CublasMatMulCorrelator(MatMulCorrelator):
         d_means = skmisc.mean(d_arr, axis=1, keepdims=True)
         d_denom_mat = cublas.dot(d_means, d_means, transb="T", handle=self.cublas_handle)
         
-        ttcf = skmisc.divide(d_outer, d_denom_mat)
+        tmp1 = skmisc.divide(d_outer, d_denom_mat)
+        tmp1 /= npix
+        
+        # Get TTCF in (lag, age)
+        self.extract_diags_kernel(tmp1,self.d_ttcf,np.int32(self.nframes),grid=self._grid, block=self._blocks)
+        
+        # Average
+        self.trigl_avg_elms(self.d_ttcf,tmp1,np.int32(self.nframes),grid=self._grid, block=self._blocks)
+        skmisc.sum(tmp1, axis=0, out=self.d_average)
+        
+        # Variance
+        self.trigl_vari_elms(self.d_ttcf, tmp1, self.d_average, np.int32(self.nframes), grid=self._grid, block=self._blocks)
+        skmisc.sum(tmp1, axis=0, out=self.d_variance)
 
-        self.sum_diagonals(d_outer, self.d_sumdiags1)
-        self.sum_diagonals(d_denom_mat, self.d_sumdiags2)
-        self.d_sumdiags1 /= self.d_sumdiags2
-        self.d_sumdiags1 /= npix
-
-        return (self.d_sumdiags1.get()[1:], ttcf.get()/npix)
+        ttcf = self.d_ttcf.get()
+        ttcf[ttcf == 0] = None
+        return (self.d_average.get()[1:], self.d_variance.get()[1:]**.5, ttcf)
 
     def correlate(self, frames, calc_std=False, ttcf_par=0):
         res = np.zeros((self.n_bins, self.nframes-1), dtype=np.float32)
         frames_flat = frames.reshape((self.nframes, -1))
         dev = np.zeros_like(res)
+        trc=None
         for i, bin_val in enumerate(self.bins):
             mask = (self.qmask.ravel() == bin_val)
-            (res[i],ttcf) = self._correlate_matmul_cublas(frames_flat, mask)
+            (res[i],dev[i],ttcf) = self._correlate_matmul_cublas(frames_flat, mask)
             if bin_val == ttcf_par:
                 trc = ttcf
-            
-            if calc_std:
-                for j in range(dev.shape[1]):
-                    d = np.diag(ttcf, k=j+1)
-                    dev[i,j] = np.std(d) / np.sqrt(len(d)) 
-            
-#        if ttcf_par != 0:
-#            print("This correlator dont provide two time correlation function yet.")
             
         return CorrelationResult(res, dev, trc)
         #return res
