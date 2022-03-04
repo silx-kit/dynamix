@@ -99,11 +99,11 @@ def myreader(fileName,nf1,nf2,scan="none"):
         fdata = f['/'+scan+'.1/measurement/eiger4m']
     
     fshape = fdata.shape       
-    data = numpy.zeros((nf2-nf1,fshape[1],fshape[2]),numpy.uint8)
+    data = numpy.zeros((nf2-nf1,fshape[1],fshape[2]),fdata.dtype)
     print("Data shape", data.shape)
     n = 0
     for i in range(nf1,nf2,1):
-        data[n,:,:] = numpy.array(fdata[i,:,:],numpy.uint8)
+        data[n,:,:] = numpy.array(fdata[i,:,:],fdata.dtype)
         n += 1
     #data = numpy.array(data[nf1:nf2,:,:])#,numpy.int8)
     #data = numpy.array(data)
