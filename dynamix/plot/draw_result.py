@@ -42,7 +42,19 @@ def plot_cf(xx,sname='',savdir="./",toplot="no"):
 def show_trc(cor,sname='',savdir="./",toplot="no"):
     plt.figure()
     nx,ny = cor.shape
-    #vvmax = np.diag(cor,k=8)
+    #For William GPU result
+    if np.isnan(cor).any():
+        nd= np.zeros(cor.shape,np.float32)
+        for i in range(1,nx,1):
+            raw = np.arange(0,nx-i,1)
+            dd = cor[np.isfinite(cor[:,i]),i]
+            col = np.arange(i,i+dd.size,1)
+            nd[raw,col] = dd
+            nd[col,raw] = dd
+  
+        nd[np.arange(0,nx,1), np.arange(0,nx,1)] = np.diag(nd,k=1).mean()
+        cor[:] = nd
+
     if nx>20000:
         cor = gaussian_filter(cor,9)
     elif nx>10000:
