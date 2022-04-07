@@ -74,7 +74,7 @@ def h5writer(fileName,data):
     print("wrote file:", fileName)
 
 
-def myreader(fileName,nf1,nf2,scan="none"):
+def myreader(fileName,detector,nf1,nf2,scan="none"):
     '''Read a NeXus HDF5 file using h5py and numpy'''
     
     t0 = time.time()
@@ -96,8 +96,10 @@ def myreader(fileName,nf1,nf2,scan="none"):
         #data = f.get('/entry_0000/measurement/data')
         fdata = f['/entry_0000/measurement/data']
     else:
-        fdata = f['/'+scan+'.1/measurement/eiger4m']
-    
+        try:
+            fdata = f['/'+scan+'.1/measurement/'+detector]
+        except:
+            fdata = f['/'+scan+'.1/measurement/impx_si_22']
     fshape = fdata.shape       
     data = numpy.zeros((nf2-nf1,fshape[1],fshape[2]),fdata.dtype)
     print("Data shape", data.shape)
@@ -207,7 +209,7 @@ def p10_eiger_event_dataf(fileName,nf1,nf2,mask,mNp):
     return pixels,s,img,nframes,mask
      
 
-def id10_eiger4m_event_dataf(fileName,nf1,nf2,mask,mNp,scan):
+def id10_eiger4m_event_dataf(fileName,detector,nf1,nf2,mask,mNp,scan):
     '''Read a ID10 HDF5 master file using h5py and numpy'''
     
     t0 = time.time()
@@ -217,7 +219,7 @@ def id10_eiger4m_event_dataf(fileName,nf1,nf2,mask,mNp,scan):
         print("File %s cannot be read" % fileName) 
         exit() 
     print("Read a ID10 HDF5 file")
-    datas = f['/'+scan+'.1/measurement/eiger4m']
+    datas = f['/'+scan+'.1/measurement/'+detector]
     n_frames, nx, ny = datas.shape
     pixels = []
     s = []
@@ -248,7 +250,7 @@ def id10_eiger4m_event_dataf(fileName,nf1,nf2,mask,mNp,scan):
     print("Reading time %3.3f sec" % (time.time()-t0))
     return pixels,s,img,nframes,mask
 
-def id10_eiger4m_event_GPU_dataf(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
+def id10_eiger4m_event_GPU_dataf(fileName,detector,nf1,nf2,mask,scan,thr=20,frc=0.15):
     """ Read a ID10 HDF5 master file using h5py, numpy and eigercompress 
 
     :param fileName: string name of the h5 file
@@ -272,7 +274,7 @@ def id10_eiger4m_event_GPU_dataf(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
         print("File %s cannot be read" % fileName) 
         exit() 
     print("Read a ID10 HDF5 file")
-    data = f['/'+scan+'.1/measurement/eiger4m']
+    data = f['/'+scan+'.1/measurement/'+detector]
     n_frames, nx, ny = data.shape
     n_frames = nf2-nf1
     print("Number of frames %d" % n_frames)
@@ -364,7 +366,7 @@ def nprepare(evs,tms):
             i += 1
     return evs[:i],tms[:i]
 
-def id10_eiger4m_event_GPU_datan(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
+def id10_eiger4m_event_GPU_datan(fileName,detector,nf1,nf2,mask,scan,thr=20,frc=0.15):
     """ Read a ID10 HDF5 master file using h5py, numpy and eigercompress 
 
     :param fileName: string name of the h5 file
@@ -386,7 +388,7 @@ def id10_eiger4m_event_GPU_datan(fileName,nf1,nf2,mask,scan,thr=20,frc=0.15):
         print("File %s cannot be read" % fileName) 
         exit() 
     print("Read a ID10 HDF5 file")
-    data = f['/'+scan+'.1/measurement/eiger4m']
+    data = f['/'+scan+'.1/measurement/'+detector]
     n_frames, nx, ny = data.shape
     n_frames = nf2-nf1
     print("Number of frames %d" % n_frames)
