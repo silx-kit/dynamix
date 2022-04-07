@@ -194,18 +194,21 @@ def main():
                     F = FramesCompressor(shape, nframes, max_nnz)
         elif prefd.find("master") >= 0 :
             #pixels,s,img,nframes,mask = h5reader.p10_eiger_event_data(sample_dir+prefd+sufd,nf1,nf2,mask)
-            pixels,s,img,nframes,mask = h5reader.p10_eiger_event_dataf(sample_dir+prefd+sufd,nf1,nf2,mask,mNp)
+            pixels,s,img,nframes,mask = h5reader.p10_eiger_event_dataf(sample_dir+prefd+sufd,detector,nf1,nf2,mask,mNp)
             trace = np.array(s,np.uint16)
             np.savetxt(savdir+sname+"_trace.dat", trace)
             sufd = ".5"
             print("Number of frames %d" % nframes)    
         elif sufd == ".h5":
             delta = readdata.get_delta(sample_dir,prefd,sufd,nf1,nf2,scan)
-            ccx = int(1024+distance*np.tan(np.deg2rad(delta))/pix_size)
+            if detector=="mpx_si_22":
+                 ccx = int(258+distance*np.tan(np.deg2rad(delta))/pix_size)
+            if detector=="eiger4m":
+                ccx = int(1024+distance*np.tan(np.deg2rad(delta))/pix_size)
             sq = 4*np.pi/lambdaw*np.sin(np.deg2rad(delta/2))
             print("Delta=%2.2f, suggested cx=%d, central q=%1.3f 1/A" % (delta,ccx, sq))
             if engine == "CPUold":
-                pixels,s,img,nframes,mask = h5reader.id10_eiger4m_event_dataf(sample_dir+prefd+sufd,nf1,nf2,mask,mNp,scan)
+                pixels,s,img,nframes,mask = h5reader.id10_eiger4m_event_dataf(sample_dir+prefd+sufd,detector,nf1,nf2,mask,mNp,scan)
                 trace = np.array(s,np.uint16)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
             #if engine == "CCPU":
@@ -213,7 +216,7 @@ def main():
             #    print("Diagnostics maximum photons per frame %d" % (mNp-10))
             #    pixels, s = tools.events(data, mNp) 
             if engine == "CPU":
-                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,nf1,nf2,mask,scan,phthr,fr)
+                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,detector,nf1,nf2,mask,scan,phthr,fr)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
                 t0 = time.time()
                 qqmask[mask>0] = 0
@@ -225,7 +228,7 @@ def main():
                 print("Counter", counter.shape,counter.dtype,counter.nbytes//1024**2)
                 print("Preprocessing time %f" % (time.time()-t0))
             if engine == "GPU":
-                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,nf1,nf2,mask,scan,phthr,fr)
+                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,detector,nf1,nf2,mask,scan,phthr,fr)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
                 t0 = time.time()
                 qqmask[mask>0] = 0
@@ -334,7 +337,8 @@ def main():
         if sufd.find("edf") > -1:#== ".edf":
             data = readdata.get_data(sample_dir,prefd,sufd,nf1,nf2)
         elif sufd == ".h5":
-            data = h5reader.myreader(sample_dir+prefd+sufd,nf1,nf2)
+            #data = h5reader.myreader(sample_dir+prefd+sufd,nf1,nf2)
+            data = h5reader.myreader(sample_dir+prefd+sufd,detector,nf1,nf2,scan)
             #data = np.array(data,np.uint16)
             
         else:
