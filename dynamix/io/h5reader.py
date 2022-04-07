@@ -96,10 +96,7 @@ def myreader(fileName,detector,nf1,nf2,scan="none"):
         #data = f.get('/entry_0000/measurement/data')
         fdata = f['/entry_0000/measurement/data']
     else:
-        try:
-            fdata = f['/'+scan+'.1/measurement/'+detector]
-        except:
-            fdata = f['/'+scan+'.1/measurement/impx_si_22']
+        fdata = f['/'+scan+'.1/measurement/'+detector]
     fshape = fdata.shape       
     data = numpy.zeros((nf2-nf1,fshape[1],fshape[2]),fdata.dtype)
     print("Data shape", data.shape)
