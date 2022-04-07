@@ -429,6 +429,8 @@ def read_det_mask(det_mask,detector):
             dshape=(1024,1024)
         elif detector == 'maxipix':
             dshape=(516,516)
+        elif detector== 'mpx_si_22':
+            dshape=(516,516)
         elif detector == 'eiger500k':
             dshape=(1024,514)    
         elif detector == 'eiger4m':
