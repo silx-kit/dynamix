@@ -161,7 +161,7 @@ def main():
 
     plt.figure()
     plt.imshow(qmask.data,cmap='gray_r')
-    if (cx<=nx) and (cy<=ny):
+    if (np.abs(cx)<=nx) and (np.abs(cy)<=ny):
         plt.plot(cx,cy,'r+')
     plt.grid()
     plt.xlabel("Pixel x")
@@ -171,7 +171,7 @@ def main():
     plt.figure()
     plt.imshow(np.log10(data),cmap='jet')
     plt.imshow(qmask,cmap='gray_r',alpha=0.5)
-    if (cx<=nx) and (cy<=ny):
+    if (np.abs(cx)<=nx) and (np.abs(cy)<=ny):
         plt.plot(cx,cy,'r+')
     plt.grid()
     plt.xlabel("Pixel x")
