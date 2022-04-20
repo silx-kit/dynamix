@@ -27,7 +27,7 @@ def radi(saxs,mask,cx,cy):
     X = X - cx
     Y = Y - cy
     q = np.float32(np.sqrt(X**2+Y**2))
-    qh = np.int16(q+0.5)#better match with data
+    qh = np.int32(q+0.5)#better match with data
     #qh = np.int16(q)#better match with pyfai
     q[mask>0] = 0
     saxs = saxs[mask<1]
@@ -39,8 +39,8 @@ def radi(saxs,mask,cx,cy):
     radi[:,0] = radius[:-1]#(radius[:-1]+radius[1:])/2.0
     radi[:,1] = ring_brightness/rings
     new_saxs = q*0
-    f1 = q-np.array(q,np.uint16)
-    ind = np.array(q,np.uint16)-int(radius[0])
+    f1 = q-np.array(q,np.uint32)
+    ind = np.array(q,np.uint32)-int(radius[0])
     ind[mask>0] = 0
     val = radi[:,1]
     val = np.append(val,val[-2:])
