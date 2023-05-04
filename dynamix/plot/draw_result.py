@@ -8,6 +8,14 @@ plt.rcParams['image.cmap'] = 'jet'
 plt.rcParams['font.size'] = 14
 
 def plot_cf(xx,sname='',savdir="./",toplot="no"):
+    """ Plots, saves figure of the g2 functions 
+
+    :param xx: 2D array of the g2
+    :param sname: str  sample name for the title and figure file name 
+    :param savdir: str directory name where to save the figure
+    :param toplot: str yes/no flag to visualise the figure
+
+    """
     max_y = 0
     n = 1
     plt.figure()
@@ -40,6 +48,14 @@ def plot_cf(xx,sname='',savdir="./",toplot="no"):
         plt.show()
 
 def show_trc(cor,sname='',savdir="./",toplot="no"):
+    """ Plots, saves figure of the TTCF function
+
+    :param cor: 2D array of the TTCF
+    :param sname: str  sample name for the title and figure file name 
+    :param savdir: str directory name where to save the figure
+    :param toplot: str yes/no flag to visualise the figure
+
+    """
     plt.figure()
     nx,ny = cor.shape
     #For William GPU result
@@ -54,7 +70,8 @@ def show_trc(cor,sname='',savdir="./",toplot="no"):
   
         nd[np.arange(0,nx,1), np.arange(0,nx,1)] = np.diag(nd,k=1).mean()
         cor[:] = nd
-
+        
+    #smooth the data to reduce the noise
     if nx>20000:
         cor = gaussian_filter(cor,9)
     elif nx>10000:
