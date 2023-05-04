@@ -1,10 +1,7 @@
 #! /usr/bin/env python3
-#wxpcs code that works with ini file
-import sys
-#sys.path.append("/data/id10/inhouse/Programs/PyXPCS_project/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Analysis/Glass_school_2019/wxpcs")
-#sys.path.append("/users/chushkin/Documents/Programs/PyXPCS_project/wxpcs")
+#Event correlator code that works with ini file
 
+import sys
 import  numpy as np
 import numba as nb
 from .WXPCS import fecorrt
@@ -71,6 +68,18 @@ def ncorrelatep(evs,tms,cnt,q,n_frames,nproc):
 #### The fastes numba implementation and does not use extra memory ###
 @nb.jit(nopython=True, parallel=True, fastmath=True)
 def ncorrelatepm(evs,tms,cnt,q,n_frames,nproc):
+    """ Calculation of the event correlation function using Numba 
+
+    :param evs: 1D array of events values
+    :param tms: 1D array of times 
+    :param cnt: 1D array of number of events in a pixel
+    :param q: 2D array q mask
+    :param n_frames: int number of frames
+    :param nproc: int number of CPU used
+
+    :return: cc 2D array of the intensity correlation function numerator, mint 1D arry of average intensity in q 
+    """
+
     qm = q.max()
     cc = np.zeros((qm,n_frames,n_frames),np.float32)
     mint = np.zeros((qm,n_frames),np.float32)
@@ -98,6 +107,28 @@ def ncorrelatepm(evs,tms,cnt,q,n_frames,nproc):
     return cc,mint
 
 
+############################################
+@nb.jit(nopython=True, parallel=True, fastmath=True)
+def get_g2(cor,norm,n_frames):
+    """ Calculation of the g2 and error from the two time correlation function #using Numba 
+
+    :param cor: 2D array of event correlation
+    :param norm: 2D array of normalization for event correlation
+    :param n_frames: integer of number of frames
+
+    :return: res 1D array of g2, dev 1D array of g2 error  
+    """
+    res = np.zeros((1,n_frames-1),np.float32)
+    dev = np.zeros((1,n_frames-1),np.float32)
+    for i in nb.prange(1,n_frames):
+        dia = np.diag(cor,k=i)
+        ind = np.where(np.isfinite(dia))
+        dia = dia[ind]
+        sdia = np.diag(norm,k=i)[ind]
+        res[0,i-1] = np.mean(dia)/np.mean(sdia)
+        dev[0,i-1] = np.std(dia/sdia)/len(sdia)**0.5
+    return res,dev 
+
 
 ##### Event_correlator standard several qs using Numba #########
 def nbecorrts_q(events,times,cnt,qqmask, n_frames, calc_std=False, ttcf_par=0):
@@ -122,6 +153,7 @@ def nbecorrts_q(events,times,cnt,qqmask, n_frames, calc_std=False, ttcf_par=0):
     print("Number of used processors: ", nproc)
     num, mint = ncorrelatepm(events,times,cnt,qqmask,n_frames,nproc)#  parallel
     #num, mint = ncorrelate(events,times,cnt,qqmask,n_frames)#  paralle
+    print("Numba correlation time %2.2f sec" % (time.time()-t0))
     res = []
     qm = qqmask.max()
     res = np.zeros((qm,n_frames-1), dtype=np.float32)
@@ -137,13 +169,9 @@ def nbecorrts_q(events,times,cnt,qqmask, n_frames, calc_std=False, ttcf_par=0):
 
         norm = np.dot(s,s.T)/n_frames
         cor = cor*for_norm/n_frames
-        for i in range(1,n_frames):
-            dia = np.diag(cor,k=i)
-            sdia = np.diag(norm,k=i)
-            ind = np.where(np.isfinite(dia))
-            res[q-1,i-1] = np.mean(dia[ind])/np.mean(sdia[ind])
-            if calc_std:
-                dev[q-1,i-1] = np.std(dia[ind]/sdia[ind])/len(sdia[ind])**0.5
+        print("Correlation time after dot %2.2f sec" % (time.time()-t0))
+        res[q-1,:],dev[q-1,:] = get_g2(cor,norm,n_frames)
+        print("Correlation time after loop %2.2f sec" % (time.time()-t0))
         if ttcf_par == q:
             trc = cor/norm
             tmp = np.diag(trc,k=-5)
@@ -358,5 +386,3 @@ def gpu_ecorr_q(events, times, offsets, shape, nframes, dtype, qqmask, max_nnz):
     print("Total correlation time %2.2f sec" % (time.time()-t0))
     trc = 0
     return CorrelationResult(res, dev, trc)
-
-
