@@ -109,7 +109,7 @@ def main():
     geometry = config["exp_setup"]["geometry"]
     cx = float(config["exp_setup"]["dbx"])
     cy = float(config["exp_setup"]["dby"])
-    dt = float(config["exp_setup"]["lagtime"])
+    dt = config["exp_setup"]["lagtime"]
     lambdaw = float(config["exp_setup"]["wavelength"])
     distance = float(config["exp_setup"]["detector_distance"])
     first_q = float(config["exp_setup"]["firstq"])
@@ -146,22 +146,24 @@ def main():
     #### check if the saving direftory exist and create one #####
     tools.test_dir(savdir)
     
-    dt = dt*skip    
+    
     ### read time period from h5 file #########
-    if sufd == ".h5":
+    if dt == "auto":
         try:
-            dt = readdata.get_dt(sample_dir,prefd,sufd,scan)[0]
-            print("Extracted time period %s" % str(float(dt*skip))) 
-            config["exp_setup"]["lagtime"] = str(dt)
-            with open(sys.argv[1], 'w') as configfile:
-                config.write(configfile)
-            dt = float(dt*skip)
-        except: pass
+            dt = readdata.get_dt(sample_dir,prefd,sufd,scan)[0]            
+            #config["exp_setup"]["lagtime"] = str(dt)
+            #with open(sys.argv[1], 'w') as configfile:
+            #    config.write(configfile)    
+        except: 
+            Print("Auto reading of the time is not good.") 
+            sys.exit()
+    dt = float(dt)*skip
+    print("Lag time with the skip factor %s" % str(dt))
     #### Copy config file to the result directory #####
-    try:
-        shutil.copy(sys.argv[1], savdir+"input_xpcs_"+sname+".txt")
-    except:pass
-     ###############################################################################################
+    
+    shutil.copy(sys.argv[1], savdir+"input_xpcs_"+sname+".txt")
+    
+    ###############################################################################################
     from dynamix.plot.draw_result import plot_cf, show_trc
     import pylab as plt
     print("Start analysis of the sample %s Scan number=%s" % (sname,str(scan)))
