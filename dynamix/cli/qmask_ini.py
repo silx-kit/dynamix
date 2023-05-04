@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
-#make q mask
-#reads the ini configuration file
+#Script to make and show q mask 
+#Reads the ini configuration file
+
 import sys
 import os
 import numpy as np
@@ -45,7 +46,7 @@ def main():
     geometry = config["exp_setup"]["geometry"]
     cx = float(config["exp_setup"]["dbx"])
     cy = float(config["exp_setup"]["dby"])
-    dt = float(config["exp_setup"]["lagtime"])
+    #dt = float(config["exp_setup"]["lagtime"])
     lambdaw = float(config["exp_setup"]["wavelength"])
     distance = float(config["exp_setup"]["detector_distance"])
     first_q = float(config["exp_setup"]["firstq"])
@@ -121,13 +122,6 @@ def main():
     print("Width of ROI is %1.1f pixels" % width_p)
     np.savetxt(savdir+sname+"_1D.dat",rad)
 
-    #qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
-    #qmask[mask>0] = 0
-    #np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
-    #qmask[qmask>number_q] = 0
-
-
-    #qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
     qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q)
     print("Q values = ", qp)
     qmask = mask*0
@@ -190,9 +184,7 @@ def main():
     plt.ylabel("I (counts)")
     plt.title(sname)
     plt.show()
-    exit()
-
-
+    sys.exit()
 
 
 if __name__ == "__main__":
