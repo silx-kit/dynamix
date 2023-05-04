@@ -272,6 +272,16 @@ def get_ccd_event_data(datdir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU,
     return pixels,s,for_norm, img
 
 def get_delta(datdir,prefd,sufd,nf1,nf2,scan="1"):    
+    """  Get Detla angle for WAXPCS analysis 
+    :param datdir: str data directory
+    :param prefd: str file prefix
+    :param sufd: str file sufix
+    :param nf1: int first frame
+    :param nf2: int last frame
+    :param scan: str scan number
+      
+    :return: delta float delta angle
+    """
     if sufd ==".edf":
         filenames = nfiles.filename(datdir+prefd,sufd,nf1,nf2)
         h = EdfMethods.headeredf(filenames[10])
@@ -281,7 +291,22 @@ def get_delta(datdir,prefd,sufd,nf1,nf2,scan="1"):
         with h5py.File(filename, mode="r") as h5:
             delta = h5['/'+scan+'.1/instrument/positioners/delta'][()]
     return delta
-    
+
+def get_dt(datdir,prefd,sufd,scan="1"):
+    """  Get delta t 
+    :param datdir: str data directory
+    :param prefd: str file prefix
+    :param sufd: str file sufix
+    :param scan: str scan number
+      
+    :return: dt float delta t
+    """
+    if sufd == ".h5":
+        filename = datdir+prefd+sufd
+        with h5py.File(filename, mode="r") as h5:
+            dt = h5['/'+scan+'.1/measurement/timer_period'][()]
+    return dt
+
 def get_eiger_event_datan(datdir,prefd,sufd,nf1,nf2,sname,mNp,savdir,mask_file,thr=20,frc=0.15):
     ### read ccd edf images and convert for Pierre's event correlator using numba ####
     t0 = time.time()
