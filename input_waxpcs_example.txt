@@ -13,6 +13,7 @@ data_prefix = test_0001
 data_sufix = .h5
 first_file = 0
 last_file = 2000
+skip = 1
 dark_dir = /data/id10/inhouse/extraspace/17run2/IHR_WAXS/dark/dark3s/
 dark_prefix = img_
 first_dark = 1
@@ -46,7 +47,7 @@ ttcf = 2
 
 
 [detector]
-det_name = eiger4M
+det_name = eiger4m
 pixels = 75.0e-6
-mask = /data/id10/inhouse/21run2/blc12870/analysis/eiger4m_mask_waxpcs.edf
+mask = /data/id10/inhouse/detectors/eiger4m/eiger4m_mask_full.npy
 flatfield = none
