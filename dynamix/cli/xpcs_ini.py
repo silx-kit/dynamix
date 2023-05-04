@@ -155,7 +155,7 @@ def main():
             #with open(sys.argv[1], 'w') as configfile:
             #    config.write(configfile)    
         except: 
-            Print("Auto reading of the time is not good.") 
+            print("Auto reading of the time is not good.") 
             sys.exit()
     dt = float(dt)*skip
     print("Lag time with the skip factor %s" % str(dt))
