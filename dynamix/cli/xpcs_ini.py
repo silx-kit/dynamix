@@ -154,8 +154,8 @@ def main():
             #config["exp_setup"]["lagtime"] = str(dt)
             #with open(sys.argv[1], 'w') as configfile:
             #    config.write(configfile)    
-        except: 
-            print("Auto reading of the time is not good.") 
+        except Exception as err:
+            print("Auto reading of the time is not good. error was",str(err))
             sys.exit()
     dt = float(dt)*skip
     print("Lag time with the skip factor %s" % str(dt))
