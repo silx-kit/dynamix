@@ -23,6 +23,8 @@ dynamix depends on the following python packages:
 
   - numpy
   - numba
+  - matplotlib
+  - scipy
   - pyopencl 2021.1.6
   - [fabio](https://github.com/silx-kit/fabio)
   - [silx](https://github.com/silx-kit/silx)
