@@ -1,7 +1,8 @@
 #! /usr/bin/env python3
-#tools
-import sys
+#Useful functions 
 
+
+import sys
 import  numpy as np
 import time
 import os
@@ -148,7 +149,7 @@ def cftomt(d, par=16):
     """ Transformation of a correlation function 
         with linear spacing into multitau spacing 
 
-    :param data: d array of correlation functions
+    :param d: 2D array of correlation functions
     :param par: integer 8,16,32,64,128 channel legth
 
     :return: x correlation function with multitau spacing
@@ -197,7 +198,7 @@ def make_q(config):
     geometry = config["exp_setup"]["geometry"]
     cx = float(config["exp_setup"]["dbx"])
     cy = float(config["exp_setup"]["dby"])
-    dt = float(config["exp_setup"]["lagtime"])
+    #dt = float(config["exp_setup"]["lagtime"])
     lambdaw = float(config["exp_setup"]["wavelength"])
     distance = float(config["exp_setup"]["detector_distance"])
     first_q = float(config["exp_setup"]["firstq"])
@@ -271,13 +272,6 @@ def make_q(config):
     #print("Width of ROI is %1.1f pixels" % width_p)
     np.savetxt(savdir+sname+"_1D.dat",rad)
 
-    #qmask = np.array((r_q-first_q+width_q/2)/width_q+1,np.uint16)
-    #qmask[mask>0] = 0
-    #np.save(savdir+sname+"_qmask.npy",np.array(qmask,np.uint16))
-    #qmask[qmask>number_q] = 0
-
-
-    #qp = np.linspace(first_q,first_q+(number_q-1)*width_q,number_q)
     qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q)
     qmask = mask*0
     i_qp = qp*0
@@ -297,7 +291,7 @@ def make_q(config):
 
 
 def test_dir(dir_name):
-    """ test the existance of the directory 
+    """ test the existance of a directory 
         if it does not exist then create 
 
     :param dir_name: directory name
@@ -320,7 +314,7 @@ def format_result(CorrelationResult,qqmask,flatfield,cdata,dt,ttcf_par):
     :param dt: lat time float
     :param ttcf_par: number of q for trc integer
 
-    :return: res, save_cf, trc formated cf for ploting, formated matrix for saving and ttime resolved cf
+    :return: res, save_cf, trc formated cf for plotting, formated matrix for saving and ttime resolved cf
     """
     res = []
     n = 0
@@ -348,6 +342,13 @@ def format_result(CorrelationResult,qqmask,flatfield,cdata,dt,ttcf_par):
       
 
 def save_cf(file_name,save_cf,qp):
+    """ save correlation functions to a text file 
+
+    :param file_name: str file name 
+    :param save_cf: 2D array of the correlation functions 
+    :param qp: 1D array of the q values 
+
+    """
     q_title='#q values 1/A:'
     for q in qp:
         q_title = q_title+" %.5f " % q
@@ -533,4 +534,3 @@ def data_compaction(data):
     print("Compaction time %f" % (time.time()-t0))
 
     return events, times, offsets
-
