@@ -1,6 +1,7 @@
 #! /usr/bin/env python3
-#xpcs script to start analysis of the data
-#reads the ini configuration file
+#Script for XPCS data analysis 
+#Reads the ini configuration file
+
 import shutil
 import sys
 import os
@@ -72,15 +73,18 @@ def main():
 
     try:
         config.read(sys.argv[1])
-    except:
-        print("Cannot read "+sys.argv[1]+" input file")
-        exit()
+    except Exception as e:
+        print("Cannot read "+sys.argv[1]+" input file, error ",str(e))
+        sys.exit()
 
     #### Sample description #######################################################################
 
     sname = config["sample_description"]["name"]
     scan = config["sample_description"]["scan"]
-    scan = str(int(scan.split("scan")[1]))
+    try:
+        scan = str(int(scan.split("scan")[1]))
+    except:
+        pass 
     #### Data location ############################################################################
 
     datdir = config["data_location"]["data_dir"]
@@ -89,6 +93,11 @@ def main():
     sufd = config["data_location"]["data_sufix"]
     nf1 = int(config["data_location"]["first_file"])
     nf2 = int(config["data_location"]["last_file"])
+    try:
+        skip = int(config["data_location"]["skip"])
+        print("Use every %d image"% skip)
+    except:
+        skip = 1
     darkdir = config["data_location"]["dark_dir"]
     df1 = int(config["data_location"]["first_dark"])
     df2 = int(config["data_location"]["last_dark"])
@@ -132,16 +141,27 @@ def main():
     ### compaction paramaters ######################################
     fr = 0.4 # fraction of frames with events 
     #small number of events fr should be small
-    phthr = 5 # max photon cutoff threshold 
+    phthr = 40 # max photon cutoff threshold 
     
     #### check if the saving direftory exist and create one #####
     tools.test_dir(savdir)
     
+    dt = dt*skip    
+    ### read time period from h5 file #########
+    if sufd == ".h5":
+        try:
+            dt = readdata.get_dt(sample_dir,prefd,sufd,scan)[0]
+            print("Extracted time period %s" % str(float(dt*skip))) 
+            config["exp_setup"]["lagtime"] = str(dt)
+            with open(sys.argv[1], 'w') as configfile:
+                config.write(configfile)
+            dt = float(dt*skip)
+        except: pass
     #### Copy config file to the result directory #####
     try:
         shutil.copy(sys.argv[1], savdir+"input_xpcs_"+sname+".txt")
     except:pass
-    ###############################################################################################
+     ###############################################################################################
     from dynamix.plot.draw_result import plot_cf, show_trc
     import pylab as plt
     print("Start analysis of the sample %s Scan number=%s" % (sname,str(scan)))
@@ -178,7 +198,7 @@ def main():
             delta = readdata.get_delta(sample_dir,prefd,sufd,nf1,nf2)
             cx = int(cx-distance*np.tan(np.deg2rad(delta))/pix_size)
             first_q = 4*np.pi/lambdaw*np.sin(np.deg2rad(delta)/2)
-            print("Automatic ajusting cx=%d and first_q=%3.3f" % (cx,first_q)) 
+            print("Automatic adjusting cx=%d and first_q=%3.3f" % (cx,first_q)) 
             if engine == "CPUold": 
                 pixels, s, for_norm, img =      readdata.get_ccd_event_data(sample_dir,prefd,sufd,nf1,nf2,darkdir,df1,df2,sname,lth,bADU,tADU,mNp,aduph,savdir,mask_file)
             else:
@@ -193,12 +213,33 @@ def main():
                     dtype = np.int8
                     F = FramesCompressor(shape, nframes, max_nnz)
         elif prefd.find("master") >= 0 :
-            #pixels,s,img,nframes,mask = h5reader.p10_eiger_event_data(sample_dir+prefd+sufd,nf1,nf2,mask)
-            pixels,s,img,nframes,mask = h5reader.p10_eiger_event_dataf(sample_dir+prefd+sufd,detector,nf1,nf2,mask,mNp)
-            trace = np.array(s,np.uint16)
+            events, times, counter, img, nframes, mask, trace = h5reader.p10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,detector,nf1,nf2,mask,scan,phthr,fr,skip)
             np.savetxt(savdir+sname+"_trace.dat", trace)
+            t0 = time.time()
+            qqmask[mask>0] = 0
+            print("Diagnostics max value %d" % events.max())
+            print("Counter max value %d" % counter.max())
+            events = np.array(events,np.int8)
+            print("Events", events.shape,events.dtype,events.nbytes//1024**2)
+            print("Times", times.shape,times.dtype,times.nbytes//1024**2)
+            print("Counter", counter.shape,counter.dtype,counter.nbytes//1024**2)
+            print("Preprocessing time %f" % (time.time()-t0))
+            delta = 37.5#there is no automatic reading of delta for P10 files
+            if detector=="eiger4m":
+                ccx = int(1024+distance*np.tan(np.deg2rad(delta))/pix_size)
+            sq = 4*np.pi/lambdaw*np.sin(np.deg2rad(delta/2))
+            print("Delta=%2.2f, suggested cx=%d, central q=%1.3f 1/A" % (delta,ccx, sq))
             sufd = ".5"
-            print("Number of frames %d" % nframes)    
+            print("Number of frames %d" % nframes)        
+            if engine == "GPU":
+                times = np.array(times,np.int32)
+                offsets = np.cumsum(counter, dtype=np.uint32)
+                offsets = np.insert(offsets,0,0)
+                max_nnz = counter.max()+1
+                from dynamix.correlator.event import FramesCompressor
+                shape = np.shape(img)
+                dtype = np.int8
+                F = FramesCompressor(shape, nframes, max_nnz)
         elif sufd == ".h5":
             delta = readdata.get_delta(sample_dir,prefd,sufd,nf1,nf2,scan)
             if detector=="mpx_si_22":
@@ -211,12 +252,8 @@ def main():
                 pixels,s,img,nframes,mask = h5reader.id10_eiger4m_event_dataf(sample_dir+prefd+sufd,detector,nf1,nf2,mask,mNp,scan)
                 trace = np.array(s,np.uint16)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
-            #if engine == "CCPU":
-            #    mNp = trace.max()+10
-            #    print("Diagnostics maximum photons per frame %d" % (mNp-10))
-            #    pixels, s = tools.events(data, mNp) 
             if engine == "CPU":
-                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,detector,nf1,nf2,mask,scan,phthr,fr)
+                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,detector,nf1,nf2,mask,scan,phthr,fr,skip)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
                 t0 = time.time()
                 qqmask[mask>0] = 0
@@ -228,7 +265,7 @@ def main():
                 print("Counter", counter.shape,counter.dtype,counter.nbytes//1024**2)
                 print("Preprocessing time %f" % (time.time()-t0))
             if engine == "GPU":
-                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,detector,nf1,nf2,mask,scan,phthr,fr)
+                events, times, counter, img, nframes, mask, trace = h5reader.id10_eiger4m_event_GPU_datan(sample_dir+prefd+sufd,detector,nf1,nf2,mask,scan,phthr,fr,skip)
                 np.savetxt(savdir+sname+"_trace.dat", trace)
                 t0 = time.time()
                 qqmask[mask>0] = 0
@@ -266,7 +303,10 @@ def main():
                     F = FramesCompressor(shape, nframes, max_nnz)
 
         #### save summed image #####
-        np.savez_compressed(savdir+sname+"_2D_raw.npz",data=np.array(img,np.float32))
+        if os.path.isfile(savdir+sname+"_2D_raw.npz"):
+            pass
+        else:
+            np.savez_compressed(savdir+sname+"_2D_raw.npz",data=np.array(img,np.float32))
 
         ### apply mask ###
         img[mask>0] = 0
@@ -281,7 +321,11 @@ def main():
                 flatfield = np.ones(mask.shape,np.float32)
         else: flatfield = np.ones(mask.shape,np.float32)
 
-        np.savez_compressed(savdir+sname+"_2D.npz",data=np.array(img/flatfield,np.float32))
+
+        if os.path.isfile(savdir+sname+"_2D.npz"):
+            pass
+        else:
+            np.savez_compressed(savdir+sname+"_2D.npz",data=np.array(img/flatfield,np.float32))
 
         ### qmask #############
         #qqmask = mask*0+1
@@ -324,7 +368,7 @@ def main():
         except: pass
 
         try:
-           print("Ploting trc, please wait")
+           print("Plotting trc, please wait")
            show_trc(trc,sname+" Scan "+str(scan),savdir,toplot)
         except: pass
 
@@ -446,73 +490,12 @@ def main():
         except: pass
 
         try:
-            print("Ploting trc, please wait")
+            print("Plotting trc, please wait")
             show_trc(trc,sname+" Scan "+str(scan),savdir,toplot)
         except: pass
     else: pass
     sys.exit()
-"""
-        input("press enter")
-        sys.exit()      
-        ##########################################################################
-        trace = np.zeros((nframes,number_q),np.float32)
-        res = []
-        n = 0
-        cf = np.zeros((nframes-1,3),np.float32)
-        cf[:,0] = np.arange(1,nframes,1)*dt
-        for q in range(1,number_q+1,1):
-            trace[:,n] =  np.sum(data[:,qqmask==q],1)
-            #fcorrection = (flatfield[qqmask==q]**2).mean()/flatfield[qqmask==q].mean()**2
-            correction = (cdata[qqmask==q]**2).mean()/cdata[qqmask==q].mean()**2# * fcorrection
-            if engine == "GPU":
-                cf[:,1] = result[n][1:]/correction#GPU
-                cf[:,2] = result[n][1:]/correction*1e-4#GPU
-            if engine == "CPU":
-                cf = result[n]#CPU
-                cf[:,0] = cf[:,0]*dt#CPU
-                cf[:,1] /= correction # make correct baseline#CPU
-                cf[:,2] /= correction # make correct baseline#CPU
-            cfm = tools.cftomt(cf)
-            res.append(cfm)
-            if q == 1:
-                save_cf = cfm
-            else:
-                save_cf = np.append(save_cf,cfm[:,1:],axis=1)
-            print(n)
-            n += 1
-
-        print("Correlation time %3.2f seconds" % (time.time()-t0))
-
-        ### save cf ##############       
-        qp = np.linspace(first_q,first_q+(number_q-1)*step_q,number_q) 
-        tools.save_cf(savdir+sname+"_event_cf.dat",save_cf,qp)
-        
-        ### save trace  ####
-        q_title='#q values 1/A:'
-        for q in qp:
-            q_title = q_title+" %.5f " % q
-        q_title=q_title+'\n'
-        f=open(savdir+sname+"_trace.dat",'w')
-        f.write(q_title)
-        np.savetxt(f, trace)
-        f.close()
-
-        #np.savetxt(savdir+sname+"_trace.dat",trace)
-        #np.savetxt(savdir+sname+"_cf.dat",save_cf)
-        #readdata.savenpz(savdir+sname+"_trc.npz",np.array(trc/correction,np.float32))
-
-        #### plot results #######
-        if toplot =="yes":
-            try:
-                plot_cf(res,sname)
-            except: pass
-            try:
-                show_trc(trc,sname,savdir)
-            except: pass
-
-"""
-
-
 
 if __name__ == "__main__":
+ 
     main()
