@@ -13,36 +13,12 @@ class MatrixEventCorrelator(OpenclCorrelator):
     """
 
     def __init__(
-        self, shape, nframes,
+        self, shape, nframes, n_times=None,
         qmask=None, dtype="f", weights=None, scale_factor=None,
         extra_options={}, ctx=None, devicetype="all", platformid=None,
         deviceid=None, block_size=None, memory=None, profile=False
     ):
         """
-        Initialize an EventCorrelator instance.
-
-        Parameters
-        -----------
-        Please refer to the documentation of dynamix.correlator.common.OpenclCorrelator
-
-        Specific parameters
-        --------------------
-        max_events_count: int
-            Expected maximum number of events (non-zero values) in the frames
-            along the time axis. If `frames_stack` is a numpy.ndarray of shape
-            `(n_frames, n_y, n_x)`, then `total_events_count` can be computed as
-
-            ```python
-            (frames_stack > 0).sum(axis=0).max()
-            ```
-        total_events_count: int, optional
-            Expected total number of events (non-zero values) in all the frames.
-            If `frames_stack` is a numpy.ndarray of shape
-            `(n_frames, n_y, n_x)`, then `total_events_count` can be computed as
-
-            ```python
-            (frames_stack > 0).sum()
-            ```
         """
         super().__init__(
             shape, nframes, qmask=qmask, dtype=dtype, weights=weights,
@@ -51,28 +27,21 @@ class MatrixEventCorrelator(OpenclCorrelator):
             deviceid=deviceid, block_size=block_size, memory=memory,
             profile=profile
         )
-        # self._allocate_events_arrays()
+        self._allocate_events_arrays(n_times)
         self._setup_kernels()
 
 
 
-    # def _allocate_events_arrays(self, is_reallocating=False):
-    #     tot_nnz = self.total_events_count
-
-    #     self.d_vol_times = parray.zeros(self.queue, tot_nnz, dtype=np.int32)
-    #     self.d_vol_data = parray.zeros(self.queue, tot_nnz, dtype=self.dtype)
-    #     self.d_offsets = parray.zeros(self.queue, np.prod(self.shape)+1, dtype=np.uint32)
-
-    #     self._old_d_vol_times = None
-    #     self._old_d_vol_data = None
-    #     self._old_d_offsets = None
-
-    #     if not(is_reallocating):
-    #         self.d_res_int = parray.zeros(self.queue, self.output_shape, dtype=np.int32)
-    #         self.d_sums = parray.zeros(self.queue, self.output_shape, np.uint32)
-    #         self.d_res = parray.zeros(self.queue, self.output_shape, np.float32)
-    #         self.d_scale_factors = parray.to_device(self.queue, np.array(list(self.scale_factors.values()), dtype=np.float32))
-
+    def _allocate_events_arrays(self, n_times):
+        if n_times is None:
+            n_times = self.nframes
+        self.n_times = n_times
+        self.correlation_matrix_full_shape = (self.nframes, self.n_times)
+        if (self.nframes * (self.n_times + 1) % 2) != 0:
+            print("Warning: incrementing n_times to have a proper-sized matrix")
+            self.n_times += 1
+        self.correlation_matrix_flat_size = self.nframes * (self.n_times + 1) // 2
+        self.d_corr_matrix = parray.zeros(self.queue, self.correlation_matrix_flat_size, np.uint32) # TODO dtype
 
 
     def _setup_kernels(self):
@@ -88,7 +57,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
         self.grid = (self.nframes, 1)
         self.wg = None # tune ?
 
-        self.d_corr_matrix = parray.zeros(self.queue, (self.nframes, self.nframes), np.uint32)
+
 
 
     def _get_compacted_qmask(self, pixel_indices, offsets):
@@ -136,6 +105,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
             d_qmask_compacted.data,
             self.d_corr_matrix.data,
             np.int32(self.nframes),
+            np.int32(self.n_times),
             # np.int32(self.n_bins)
             np.int32(1)
         )

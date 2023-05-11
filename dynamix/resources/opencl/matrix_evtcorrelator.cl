@@ -36,7 +36,6 @@
   qmask_compacted: array of 'total_nnz' elements. qmask_comacted[idx] gives the q-bin of pixel at (compacted) index 'idx'.
 
 
-
 */
 kernel void build_correlation_matrix(
     const global DTYPE* data,
@@ -45,6 +44,7 @@ kernel void build_correlation_matrix(
     const global char* qmask,
     global RES_DTYPE* corr_matrix,
     int n_frames,
+    int n_times,
     int n_bins
 ) {
 
@@ -60,6 +60,6 @@ kernel void build_correlation_matrix(
            res += ((RES_DTYPE) data[i]) * ((RES_DTYPE) data[i]);
         }
     }
-    corr_matrix[frame_idx * n_frames + frame_idx] = res; // current_qbin; // res; // i_stop - i_start; // res;
+    corr_matrix[frame_idx * n_times + frame_idx] = res;
 
 }
