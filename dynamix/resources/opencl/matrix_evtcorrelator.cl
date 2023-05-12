@@ -35,14 +35,14 @@
   The output correlation matrix is flattened, and only the upper part is retained.
   So instead of having W*W elements (where W is the matrix width), [W | W | ... | W]
   We have W * (W+1)//2 elements  [W | W - 1 | W - 2 | ... 1 ]
-  Element at index (x, y) in the 2D matrix corresponds to index   W * y - y*(y-1)//2 + x   in the flattened array
+  Element at index (x, y) in the 2D matrix corresponds to index   W * y - y*(y-1)//2 + x - y  in the flattened array
 
   W: matrix width
   x: column index
   y : row index
 */
 static inline size_t get_index(uint W, uint x, uint y) {
-    return (size_t) (W * y) - (size_t) (y*(y-1)/2) + x;
+    return (size_t) (W * y) - (size_t) (y*(y-1)/2) + x - y;
 }
 
 
