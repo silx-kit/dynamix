@@ -86,4 +86,63 @@ kernel void build_correlation_matrix_diagonal(
 }
 
 
+
+kernel void build_correlation_matrix_flattened(
+    const global DTYPE* data,
+    const global uint* pixel_idx,
+    const global OFFSET_DTYPE* offset,
+    const global char* qmask,
+    global RES_DTYPE* corr_matrix,
+    int n_frames,
+    int n_times,
+    int current_qbin
+) {
+
+    uint time_idx = get_global_id(0);
+    uint frame_idx = get_global_id(1);
+    if (time_idx >= n_times || frame_idx >= n_frames || frame_idx > time_idx) return;
+
+    OFFSET_DTYPE i_start = offset[frame_idx], i_stop = offset[frame_idx+1];
+    RES_DTYPE res = 0;
+
+
+    if (time_idx == frame_idx) {
+        // Main diagonal - simple case!
+        RES_DTYPE d = 0;
+        for (int i = i_start; i < i_stop; i++) {
+            if (qmask[i] == current_qbin) {
+                d = (RES_DTYPE) data[i];
+                res += d * d;
+            }
+        }
+    }
+    else {
+        // Off-diagonal
+        OFFSET_DTYPE i_start_other = offset[time_idx], i_stop_other = offset[time_idx+1];
+
+        uint i_other = 0;
+        uint n_pix_other = i_stop_other - i_start_other;
+        for (uint i = 0; i < i_stop - i_start; i++) {
+            while (i_other < n_pix_other && pixel_idx[i_start_other + i_other] < pixel_idx[i_start + i]) {
+                i_other += 1;
+            }
+            if (i_other == n_pix_other) continue;
+            if (pixel_idx[i_start_other + i_other] == pixel_idx[i_start + i]
+                && qmask[i_start + i] == current_qbin
+                && qmask[i_start_other + i_other] == current_qbin
+            ){
+                res += data[i_start + i] * data[i_start_other + i_other];
+            }
+        }
+    }
+    size_t out_idx = get_index(n_times, time_idx, frame_idx);
+    corr_matrix[out_idx] = res;
 }
+
+
+
+
+
+
+
+

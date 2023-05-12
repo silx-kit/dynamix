@@ -52,9 +52,9 @@ class MatrixEventCorrelator(OpenclCorrelator):
                 "-DDTYPE=%s" % self.c_dtype,
             ]
         )
-        self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix")
+        self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened")
 
-        self.grid = (self.nframes, 1)
+        self.grid = (self.nframes, self.n_times)
         self.wg = None # tune ?
 
 
