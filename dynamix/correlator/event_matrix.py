@@ -1,5 +1,6 @@
 from time import perf_counter
 import numpy as np
+from pyopencl import LocalMemory
 import pyopencl.array as parray
 from ..utils import get_opencl_srcfile
 from .common import OpenclCorrelator
@@ -52,10 +53,10 @@ class MatrixEventCorrelator(OpenclCorrelator):
                 "-DDTYPE=%s" % self.c_dtype,
             ]
         )
-        self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened")
+        self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened_wg")
 
         self.grid = (self.nframes, self.n_times)
-        self.wg = None # tune ?
+        self.wg = (32, 1) # None # tune ?
 
 
 
@@ -107,7 +108,9 @@ class MatrixEventCorrelator(OpenclCorrelator):
             np.int32(self.nframes),
             np.int32(self.n_times),
             # np.int32(self.n_bins)
-            np.int32(1)
+            np.int32(1),
+            LocalMemory(4096 * 1),
+            LocalMemory(4096 * 1),
         )
         evt.wait()
         self.profile_add(evt, "Event correlator")
