@@ -58,14 +58,14 @@ static inline size_t get_index(uint W, uint x, uint y) {
 
 
 */
-kernel void build_correlation_matrix(
+
+kernel void build_correlation_matrix_diagonal(
     const global DTYPE* data,
     const global uint* pixel_idx,
     const global OFFSET_DTYPE* offset,
     const global char* qmask,
     global RES_DTYPE* corr_matrix,
     int n_frames,
-    int n_times,
     int n_bins
 ) {
 
@@ -81,6 +81,9 @@ kernel void build_correlation_matrix(
            res += ((RES_DTYPE) data[i]) * ((RES_DTYPE) data[i]);
         }
     }
-    corr_matrix[frame_idx * n_times + frame_idx] = res;
+    corr_matrix[frame_idx * n_frames + frame_idx] = res; // current_qbin; // res; // i_stop - i_start; // res;
+
+}
+
 
 }
