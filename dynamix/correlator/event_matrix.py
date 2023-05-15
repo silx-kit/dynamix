@@ -2,7 +2,7 @@ from time import perf_counter
 import numpy as np
 from pyopencl import LocalMemory
 import pyopencl.array as parray
-from ..utils import get_opencl_srcfile
+from ..utils import get_opencl_srcfile, updiv
 from .common import OpenclCorrelator
 
 class MatrixEventCorrelator(OpenclCorrelator):
@@ -55,8 +55,10 @@ class MatrixEventCorrelator(OpenclCorrelator):
         )
         self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened_wg")
 
-        self.grid = (self.nframes, self.n_times)
-        self.wg = (32, 1) # None # tune ?
+        wg_size = 16 # Tune ?
+        self.wg = (wg_size, 1) # None
+        self.grid = [int(x) for x in [self.n_times , self.nframes]] # sanitize
+        # self.grid[0] = updiv(updiv(self.n_times, wg_size), wg_size)*wg_size
 
 
 
