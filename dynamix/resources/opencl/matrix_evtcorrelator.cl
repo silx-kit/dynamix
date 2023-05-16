@@ -45,6 +45,32 @@ static inline size_t get_index(uint W, uint x, uint y) {
     return (size_t) (W * y) - (size_t) (y*(y-1)/2) + x - y;
 }
 
+/*
+  Binary search in an array of (unsigned) integers.
+
+  Parameters
+  -----------
+  val: query element
+  arr: (sorted) array
+  n: array size
+
+  Returns
+  -------
+  idx: Location of found element. If no element is found, return the array size.
+*/
+static inline uint binary_search(uint val, uint* arr, uint n) {
+    uint L = 0, R = n - 1;
+    uint m = 0;
+    while (L != R) {
+        m = (L + R + 1)/2;
+        if (arr[m] > val) R = m - 1;
+        else L = m;
+    }
+    if (arr[L] == val) return L;
+    return n;
+}
+
+
 
 
 
@@ -228,7 +254,48 @@ kernel void build_correlation_matrix_flattened_wg(
 
 
 
+kernel void build_correlation_matrix_image(
+    const global DTYPE* data,
+    const global uint* pixel_idx,
+    const global OFFSET_DTYPE* frame_offset,
+    const global char* qmask,
+    global RES_DTYPE* corr_matrix,
+    int n_frames,
+    int n_times,
+    int current_qbin
+) {
+
+    uint frame_idx = get_global_id(1);
+    if (frame_idx  >= n_frames) return;
+    uint idx = get_global_id(0);
+    uint i_start_0 = frame_offset[frame_idx];
+    uint i_stop_0 = frame_offset[frame_idx + 1];
+    if (i_start_0 + idx >= i_stop_0) return;
+
+    // coalesced (?) reads in global memory
+    if (qmask[i_start_0 + idx] != current_qbin) return;
+    uint my_pix_idx = pixel_idx[i_start_0 + idx];
+    RES_DTYPE d = (RES_DTYPE) data[i_start_0 + idx];
 
 
+    // corr_matrix[i, i] = sum_in_bin(frame[i] * frame[i])
+    size_t out_idx = get_index(n_times, frame_idx, frame_idx);
+    uint out_idx2 = (uint) out_idx;
+    atomic_add(corr_matrix + out_idx2, d * d);
+
+
+    for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times; other_frame_idx++) {
+        // data for current frame is in data[i_start:i_stop]
+        uint i_start = frame_offset[other_frame_idx];
+        uint i_stop = frame_offset[other_frame_idx + 1];
+        // is there an index 'i' in pixel_idx[i_start:i_stop] such that i == my_pix_idx ?
+        uint i = binary_search(my_pix_idx, pixel_idx + i_start, i_stop - i_start);
+        if (i == i_stop - i_start) continue;
+        // if so, accumulate the result
+        RES_DTYPE d_other = (RES_DTYPE) data[i_start + i];
+        out_idx = get_index(n_times, other_frame_idx, frame_idx);
+        atomic_add(corr_matrix + out_idx, d * d_other);
+    }
+}
 
 
