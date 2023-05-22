@@ -284,7 +284,7 @@ kernel void build_correlation_matrix_image(
     atomic_add(corr_matrix + out_idx2, d * d);
 
 
-    for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times; other_frame_idx++) {
+    for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times && other_frame_idx - frame_idx < n_times/2 ; other_frame_idx++) {
         // data for current frame is in data[i_start:i_stop]
         uint i_start = frame_offset[other_frame_idx];
         uint i_stop = frame_offset[other_frame_idx + 1];
