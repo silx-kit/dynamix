@@ -260,6 +260,7 @@ kernel void build_correlation_matrix_image(
     const global OFFSET_DTYPE* frame_offset,
     const global char* qmask,
     global RES_DTYPE* corr_matrix,
+    global RES_DTYPE* sums,
     int n_frames,
     int n_times,
     int current_qbin
@@ -272,17 +273,20 @@ kernel void build_correlation_matrix_image(
     uint i_stop_0 = frame_offset[frame_idx + 1];
     if (i_start_0 + idx >= i_stop_0) return;
 
-    // coalesced (?) reads in global memory
-    if (qmask[i_start_0 + idx] != current_qbin) return;
+    char qbin = qmask[i_start_0 + idx] - 1;
+    if ((qbin < 0) || (current_qbin > 0 && qbin != current_qbin)) return;
+    size_t cor_matrix_flat_size = (n_frames * (n_times + 1)) / 2;
+
     uint my_pix_idx = pixel_idx[i_start_0 + idx];
     RES_DTYPE d = (RES_DTYPE) data[i_start_0 + idx];
 
 
     // corr_matrix[i, i] = sum_in_bin(frame[i] * frame[i])
     size_t out_idx = get_index(n_times, frame_idx, frame_idx);
-    uint out_idx2 = (uint) out_idx;
-    atomic_add(corr_matrix + out_idx2, d * d);
-
+    if (current_qbin < 0) out_idx += qbin * cor_matrix_flat_size;
+    atomic_add(corr_matrix + out_idx, d * d);
+    // sums[i] = sum_in_bin(frame[i])
+    atomic_add(sums + frame_idx, d);
 
     for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times && other_frame_idx - frame_idx < n_times/2 ; other_frame_idx++) {
         // data for current frame is in data[i_start:i_stop]
@@ -294,6 +298,7 @@ kernel void build_correlation_matrix_image(
         // if so, accumulate the result
         RES_DTYPE d_other = (RES_DTYPE) data[i_start + i];
         out_idx = get_index(n_times, other_frame_idx, frame_idx);
+        if (current_qbin < 0) out_idx += qbin * cor_matrix_flat_size;
         atomic_add(corr_matrix + out_idx, d * d_other);
     }
 }

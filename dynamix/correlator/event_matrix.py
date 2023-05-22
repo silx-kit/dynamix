@@ -42,7 +42,8 @@ class MatrixEventCorrelator(OpenclCorrelator):
             print("Warning: incrementing n_times to have a proper-sized matrix")
             self.n_times += 1
         self.correlation_matrix_flat_size = self.nframes * (self.n_times + 1) // 2
-        self.d_corr_matrix = parray.zeros(self.queue, self.correlation_matrix_flat_size, np.uint32) # TODO dtype
+        # TODO dtype + q-bin selection if needed (to reduce array size)
+        self.d_corr_matrix = parray.zeros(self.queue, (self.n_bins, self.correlation_matrix_flat_size), np.uint32)
 
 
     def _setup_kernels(self):
@@ -135,6 +136,8 @@ class MatrixEventCorrelator(OpenclCorrelator):
         d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
         d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
         d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
+        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype
+
 
         t0 = perf_counter()
         qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
@@ -151,9 +154,10 @@ class MatrixEventCorrelator(OpenclCorrelator):
             d_offsets.data,
             d_qmask_compacted.data,
             self.d_corr_matrix.data,
+            self.d_sums.data,
             np.int32(self.nframes),
             np.int32(self.n_times),
-            np.int32(1),
+            np.int32(-1),
         )
         evt.wait()
         self.profile_add(evt, "Event correlator")
