@@ -1,5 +1,4 @@
 
-
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
 // ----------------------------------------------------------------------------
@@ -302,5 +301,160 @@ kernel void build_correlation_matrix_image(
         atomic_add(corr_matrix + out_idx, d * d_other);
     }
 }
+
+
+
+
+
+
+kernel void build_correlation_matrix_times_representation(
+    const global uint* vol_times_array,
+    const global DTYPE* vol_data_array,
+    const global uint* offsets,
+    const global int* q_mask,
+    global RES_DTYPE* corr_matrix,
+    global uint* sums,
+    int image_height,
+    int n_frames,
+    int n_times
+) {
+    uint x = get_global_id(0);
+    uint y = get_global_id(1);
+    if ((x >= IMAGE_WIDTH) || (y >= image_height)) return;
+    uint pos = y*IMAGE_WIDTH + x;
+
+    int bin_idx = q_mask[pos] - 1;
+    if (bin_idx < 0) return;
+
+    uint offset = offsets[pos];
+    int n_events = offsets[pos+1] - offset;
+    if (n_events == 0) return;
+
+    global uint* vol_times = vol_times_array + offset;
+    global DTYPE* vol_data = vol_data_array + offset;
+
+    int times[MAX_EVT_COUNT] = {0};
+    DTYPE data[MAX_EVT_COUNT] = {0};
+    for (int i = 0; i < n_events; i++) {
+        times[i] = vol_times[i];
+        data[i] = vol_data[i];
+    }
+
+    size_t cor_matrix_flat_size = (n_frames * (n_times + 1)) / 2;
+
+    global uint* my_sums = sums + bin_idx * n_frames;
+    for (int i_tau = 0; i_tau < n_events; i_tau++) {
+        atomic_add(my_sums + times[i_tau], data[i_tau]);
+        for (int i_t = i_tau; i_t < n_events; i_t++) {
+            int tau = times[i_t] - times[i_t - i_tau];
+            // size_t out_idx = get_index(n_times, times[i_tau], times[i_t - i_tau]);
+            size_t out_idx = get_index(n_times, times[i_t], times[i_t - i_tau]);
+            out_idx += bin_idx * cor_matrix_flat_size;
+            atomic_add(corr_matrix + out_idx, data[i_t] * data[i_t - i_tau]);
+
+            // was: atomic_add(my_res_tau + tau, data[i_t] * data[i_t - i_tau]);
+        }
+    }
+}
+
+
+// OK, but results may be un-sorted (does not matter for calculating correlation or re-densifying)
+kernel void space_compact_to_time_compact(
+    const global DTYPE* data,
+    const global uint* pixel_idx,
+    const global OFFSET_DTYPE* frame_offset,
+
+    global DTYPE* t_data,
+    global uint* t_times,
+    global uint* counters,
+
+    int n_frames,
+    int Nx,
+    int Ny
+) {
+
+    uint idx = get_global_id(0);
+
+    uint start, stop;
+    size_t img_pix_idx, vol_pix_idx;
+    uint j = 0;
+    for (uint i = 0; i < n_frames; i++) {
+        start = frame_offset[i];
+        stop = frame_offset[i+1];
+        if (start + idx < stop) {
+            img_pix_idx = pixel_idx[start + idx];
+            j = atomic_inc(counters + img_pix_idx);
+            vol_pix_idx = img_pix_idx + j * Ny * Nx;
+            t_data[vol_pix_idx] = data[start + idx];
+            t_times[vol_pix_idx] = i;
+        }
+    }
+}
+
+
+kernel void space_compact_to_time_compact_alternate(
+    const global DTYPE* data,
+    const global uint* pixel_idx,
+    const global OFFSET_DTYPE* frame_offset,
+    const global int* q_mask,
+
+    global DTYPE* t_data,
+    global uint* t_times,
+    global uint* counters,
+
+    int n_frames,
+    int Nx,
+    int Ny
+) {
+
+    uint x = get_global_id(0);
+    uint y = get_global_id(1);
+
+    if (x >= Nx || y >= Ny) return;
+    size_t pos = y * Nx + x;
+    int qbin = q_mask[pos] - 1;
+    if (qbin < 0) return;
+
+
+    uint t = 0;
+    for (uint i = 0; i < n_frames; i++) {
+        uint start = frame_offset[i];
+        uint stop = frame_offset[i+1];
+        uint pos2 = binary_search(pos, pixel_idx + start, stop - start);
+        if (pos2 == stop - start) continue;
+        size_t pos_in_vol = (t * Ny + y) * Nx + x;
+        t_times[pos_in_vol] = i;
+        t_data[pos_in_vol] = data[start + pos2];
+        t++;
+    }
+    counters[pos] = t;
+}
+
+
+kernel void space_compact_to_time_compact_stage2(
+    const global DTYPE* t_data_tmp,
+    const global uint* t_times_tmp,
+    const global OFFSET_DTYPE* t_offsets,
+
+    global DTYPE* t_data,
+    global uint* t_times,
+
+    int n_pix
+) {
+
+    uint pix_idx = get_global_id(0);
+    if (pix_idx >= n_pix) return;
+    uint start = t_offsets[pix_idx];
+    uint stop = t_offsets[pix_idx+1];
+    if (start == stop) return;
+
+    for (uint i = start; i < stop; i++) {
+        t_data[i] = t_data_tmp[(i - start) * n_pix + pix_idx];
+        t_times[i] = t_times_tmp[(i - start) * n_pix + pix_idx];
+    }
+
+}
+
+
 
 
