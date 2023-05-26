@@ -287,7 +287,7 @@ kernel void build_correlation_matrix_image(
     // sums[i] = sum_in_bin(frame[i])
     atomic_add(sums + frame_idx, d);
 
-    for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times && other_frame_idx - frame_idx < n_times/2 ; other_frame_idx++) {
+    for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times /* && other_frame_idx - frame_idx < n_times/2 */ ; other_frame_idx++) {
         // data for current frame is in data[i_start:i_stop]
         uint i_start = frame_offset[other_frame_idx];
         uint i_stop = frame_offset[other_frame_idx + 1];
@@ -455,6 +455,58 @@ kernel void space_compact_to_time_compact_stage2(
 
 }
 
+/**
+ * Should be launched with a grid (n_pixels_tot, 1).
+ * This kernel does the same as "space_compact_to_time_compact_stage2",
+ * but it also sorts the elements by time before merging them.
+ *
+*/
+kernel void space_compact_to_time_compact_stage2_sort(
+    const global DTYPE* t_data_tmp,
+    const global uint* t_times_tmp,
+    const global OFFSET_DTYPE* t_offsets,
 
+    global DTYPE* t_data,
+    global uint* t_times,
+
+    int n_pix
+) {
+
+    uint pix_idx = get_global_id(0);
+    if (pix_idx >= n_pix) return;
+    uint start = t_offsets[pix_idx];
+    uint stop = t_offsets[pix_idx+1];
+    if (start == stop) return;
+
+
+    uint l_times[MAX_EVT_COUNT] = {0};
+    DTYPE l_data[MAX_EVT_COUNT] = {0};
+
+    for (uint i = 0; i < stop-start; i++) {
+        l_data[i] = t_data_tmp[i * n_pix + pix_idx];
+        l_times[i] = t_times_tmp[i * n_pix + pix_idx];
+    }
+
+    int i = 1, j;
+    while (i < stop-start) {
+        j = i;
+        while (j > 0 && l_times[j-1] > l_times[j]) {
+            uint tmp = l_times[j];
+            l_times[j] = l_times[j-1];
+            l_times[j-1] = tmp;
+
+            DTYPE tmp2 = l_data[j];
+            l_data[j] = l_data[j-1];
+            l_data[j-1] = tmp2;
+            j--;
+        }
+        i++;
+    }
+
+    for (uint i = start; i < stop; i++) {
+        t_data[i] = l_data[i - start];
+        t_times[i] = l_times[i - start];
+    }
+}
 
 
