@@ -47,15 +47,22 @@ class MatrixEventCorrelator(OpenclCorrelator):
 
 
     def _setup_kernels(self):
+        self._max_nnz = 250 # TODO
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
             kernel_files=kernel_files,
             compile_options=[
                 "-DDTYPE=%s" % self.c_dtype,
+                "-DIMAGE_WIDTH=%s" % self.shape[1],
+                "-DMAX_EVT_COUNT=%d" % self._max_nnz,
             ]
         )
         self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened_wg")
         self.build_correlation_matrix_image = self.kernels.get_kernel("build_correlation_matrix_image")
+        self.build_correlation_matrix_times_representation = self.kernels.get_kernel("build_correlation_matrix_times_representation")
+        self.space_compact_to_time_compact_kernel = self.kernels.get_kernel("space_compact_to_time_compact")
+        self.space_compact_to_time_compact_kernel_v2 = self.kernels.get_kernel("space_compact_to_time_compact_alternate")
+        self.space_compact_to_time_compact_stage2_kernel = self.kernels.get_kernel("space_compact_to_time_compact_stage2_sort")
 
         wg_size = 16 # Tune ?
         self.wg = (wg_size, 1) # None
@@ -127,11 +134,11 @@ class MatrixEventCorrelator(OpenclCorrelator):
 
 
     def build_correlation_matrix_v2(self, data, pixel_indices, offsets):
-
-
-        wg = None
-        grid = (11000, self.nframes)
-
+        # wg = None
+        # grid = (11*1024, self.nframes, 1)
+        wg = (512, 1)
+        grid = (updiv(11000, wg[0])*wg[0], self.nframes)
+        print(grid)
 
         d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
         d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
@@ -161,25 +168,167 @@ class MatrixEventCorrelator(OpenclCorrelator):
         )
         evt.wait()
         self.profile_add(evt, "Event correlator")
-        print("build correlation matrix:", (perf_counter() - t0) * 1e3)
+        print("build correlation matrix [binary_search]:", (perf_counter() - t0) * 1e3)
 
         # self._reset_arrays(["vol_times", "vol_data", "offsets"])
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
         return self.d_corr_matrix.get()
+
+
+    def build_correlation_matrix_times(self, data, times, offsets):
+        wg = None
+        grid = tuple(self.shape[::-1])
+
+        d_data = parray.to_device(self.queue, data)
+        d_times = parray.to_device(self.queue, times)
+        d_offsets = parray.to_device(self.queue, offsets)
+
+        self.d_corr_matrix.fill(0)
+        self.d_sums.fill(0)
+
+        t0 = perf_counter()
+        evt = self.build_correlation_matrix_times_representation(
+            self.queue,
+            grid,
+            wg,
+            d_times.data,
+            d_data.data,
+            d_offsets.data,
+            self.d_qmask.data,
+            self.d_corr_matrix.data,
+            self.d_sums.data,
+            np.int32(self.shape[0]),
+            np.int32(self.nframes),
+            np.int32(self.n_times),
+        )
+        evt.wait()
+        self.profile_add(evt, "Event correlator")
+        print("build correlation matrix (times repr.):", (perf_counter() - t0) * 1e3)
+
+        # self._reset_arrays(["vol_times", "vol_data", "offsets"])
+        return self.d_corr_matrix.get()
+
+
+
+    def space_compact_to_time_compact(self, data, pixel_indices, offsets):
+        wg = None
+        grid = (11000, 1)
+
+        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
+        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
+        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
+
+        # TODO estimate "max_nnz"
+
+        d_t_data = parray.zeros(self.queue, self._max_nnz * np.prod(self.shape), np.uint8)
+        d_t_times = parray.zeros(self.queue, self._max_nnz * np.prod(self.shape), np.uint32)
+        d_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
+
+
+        t0 = perf_counter()
+        evt = self.space_compact_to_time_compact_kernel(
+            self.queue,
+            grid,
+            wg,
+
+            d_data.data,
+            d_pixel_indices.data,
+            d_offsets.data,
+
+            d_t_data.data,
+            d_t_times.data,
+            d_counter.data,
+
+            np.int32(self.nframes),
+            np.int32(self.shape[1]),
+            np.int32(self.shape[0]),
+        )
+        evt.wait()
+        self.profile_add(evt, "Event correlator")
+        print("re-compact data:", (perf_counter() - t0) * 1e3)
+
+        # self._reset_arrays(["vol_times", "vol_data", "offsets"])
+        return d_t_data.get(), d_t_times.get(), d_counter.get()
+
+
+
+
+    def space_compact_to_time_compact_v2(self, data, pixel_indices, offsets):
+        wg = None
+        grid = self.shape[::-1]
+
+        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
+        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
+        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
+
+        d_t_data = parray.zeros(self.queue, self._max_nnz * np.prod(self.shape), np.uint8)
+        d_t_times = parray.zeros(self.queue, self._max_nnz * np.prod(self.shape), np.uint32)
+        d_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
+
+
+        t0 = perf_counter()
+        evt = self.space_compact_to_time_compact_kernel_v2(
+            self.queue,
+            grid,
+            wg,
+
+            d_data.data,
+            d_pixel_indices.data,
+            d_offsets.data,
+            self.d_qmask.data,
+
+            d_t_data.data,
+            d_t_times.data,
+            d_counter.data,
+
+            np.int32(self.nframes),
+            np.int32(self.shape[1]),
+            np.int32(self.shape[0]),
+        )
+        evt.wait()
+        self.profile_add(evt, "Event correlator")
+        print("re-compact data (v2):", (perf_counter() - t0) * 1e3)
+
+        # self._reset_arrays(["vol_times", "vol_data", "offsets"])
+        return d_t_data.get(), d_t_times.get(), d_counter.get()
+
+
+
+    def space_compact_to_time_compact_stage2(self, t_data_tmp, t_times_tmp, t_counter):
+
+        t0 = perf_counter()
+        offsets = np.hstack([np.array([0], dtype=np.uint32), np.cumsum(t_counter, dtype=np.uint32)])
+        print("[space->times stage 2] cumsum:", (perf_counter() - t0) * 1e3)
+
+        d_t_data_tmp = parray.to_device(self.queue, t_data_tmp)
+        d_t_times_tmp = parray.to_device(self.queue, t_times_tmp)
+
+        d_t_offsets = parray.to_device(self.queue, offsets)
+        d_t_data = parray.zeros(self.queue, offsets[-1], t_data_tmp.dtype)
+        d_t_times = parray.zeros(self.queue, d_t_data.size, np.uint32)
+
+        wg = None
+        grid = (np.prod(self.shape), 1)
+
+        t0 = perf_counter()
+        evt = self.space_compact_to_time_compact_stage2_kernel(
+            self.queue,
+            grid,
+            wg,
+
+            d_t_data_tmp.data,
+            d_t_times_tmp.data,
+            d_t_offsets.data,
+
+            d_t_data.data,
+            d_t_times.data,
+
+            np.int32(np.prod(self.shape)),
+        )
+        evt.wait()
+        self.profile_add(evt, "Event correlator")
+        print("[space->times stage 2] kernel:", (perf_counter() - t0) * 1e3)
+
+        return d_t_data.get(), d_t_times.get(), offsets
+
+
+
