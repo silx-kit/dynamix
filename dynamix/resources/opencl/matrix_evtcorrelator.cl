@@ -45,6 +45,32 @@ static inline size_t get_index(uint W, uint x, uint y) {
     return (size_t) (W * y) - (size_t) (y*(y-1)/2) + x - y;
 }
 
+/*
+  Binary search in an array of (unsigned) integers.
+
+  Parameters
+  -----------
+  val: query element
+  arr: (sorted) array
+  n: array size
+
+  Returns
+  -------
+  idx: Location of found element. If no element is found, return the array size.
+*/
+static inline uint binary_search(uint val, uint* arr, uint n) {
+    uint L = 0, R = n - 1;
+    uint m = 0;
+    while (L != R) {
+        m = (L + R + 1)/2;
+        if (arr[m] > val) R = m - 1;
+        else L = m;
+    }
+    if (arr[L] == val) return L;
+    return n;
+}
+
+
 
 
 
@@ -157,12 +183,11 @@ kernel void build_correlation_matrix_flattened_wg(
     uint frame_idx = get_global_id(1);
     uint tid = get_local_id(0);
     uint wg_size = get_local_size(0);
-    if (time_idx >= n_times || frame_idx >= n_frames || frame_idx > time_idx) return;
+    // if (time_idx >= n_times || frame_idx >= n_frames || frame_idx > time_idx) return;
+    if (time_idx >= n_times || frame_idx >= n_frames) return;
 
     OFFSET_DTYPE i_start = frame_offset[frame_idx], i_stop = frame_offset[frame_idx+1];
     RES_DTYPE res = 0;
-
-    RES_DTYPE debug = 0;
 
     uint s_offset = 0, offset = 0;
 
@@ -173,73 +198,109 @@ kernel void build_correlation_matrix_flattened_wg(
       // Fetch XX[i_start:i_stop] into shared memory where XX is 'data' and 'pixel_idx'
       // local DTYPE s_data[SHARED_ARRAYS_SIZE];
       // local char s_qmask[SHARED_ARRAYS_SIZE];
-      // for (uint offset = s_offset; i_start + offset < i_stop; offset += wg_size) {
-      for (offset = 0; offset < SHARED_ARRAYS_SIZE/wg_size ; offset += wg_size) {
-          debug = s_offset + offset + tid;
-          if (s_offset + offset + tid >= i_stop - i_start) break;
+      for (offset = 0; offset + tid < SHARED_ARRAYS_SIZE ; offset += wg_size) {
+          if (i_start + s_offset + offset + tid >= i_stop) break;
           s_data[offset + tid] = data[i_start + s_offset + offset + tid];
           s_qmask[offset + tid] = qmask[i_start + s_offset + offset + tid];
-
-          // if (i_start + offset + tid < i_stop) {
-              // if (offset + tid < SHARED_ARRAYS_SIZE) s_data[offset + tid] = data[i_start + offset + tid];
-              // if (offset + tid < SHARED_ARRAYS_SIZE) s_qmask[offset + tid] = qmask[i_start + offset + tid];
-          // }
-
-
-
       }
       barrier(CLK_LOCAL_MEM_FENCE);
       // ========================================================================
 
-
-
-
-      if (tid == 0 && time_idx == frame_idx) {
+      if (time_idx == frame_idx) {
           // Main diagonal - simple case!
           RES_DTYPE d = 0;
           for (uint i = 0; i < SHARED_ARRAYS_SIZE && i_start + s_offset + i < i_stop; i++) {
-              if (1 || s_qmask[i] == current_qbin) {
-                  // d = (RES_DTYPE) s_data[i];
-                  // res += d * d;
-                res += 1; // ((RES_DTYPE) s_data[i]) * ((RES_DTYPE) s_data[i]);
+              if (s_qmask[i] == current_qbin) {
+                  d = (RES_DTYPE) s_data[i];
+                  res += d * d;
               }
           }
       }
 
       // ========================================================================  off-diagonal
-      else {
-          return;
-          // Off-diagonal
-          OFFSET_DTYPE i_start_other = frame_offset[time_idx], i_stop_other = frame_offset[time_idx+1];
+      // else {
+      //     // Off-diagonal
+      //     OFFSET_DTYPE i_start_other = frame_offset[time_idx], i_stop_other = frame_offset[time_idx+1];
 
-          uint i_other = 0;
-          uint n_pix_other = i_stop_other - i_start_other;
-          for (uint i = 0; i < i_stop - i_start; i++) {
-              while (i_other < n_pix_other && pixel_idx[i_start_other + i_other] < pixel_idx[i_start + i]) {
-                  i_other += 1;
-              }
-              if (i_other == n_pix_other) continue;
-              if (pixel_idx[i_start_other + i_other] == pixel_idx[i_start + i]
-                  && qmask[i_start + i] == current_qbin
-                  && qmask[i_start_other + i_other] == current_qbin
-              ){
-                  res += data[i_start + i] * data[i_start_other + i_other];
-              }
-          }
-      }
+      //     uint i_other = 0;
+      //     uint n_pix_other = i_stop_other - i_start_other;
+      //     for (uint i = 0; i < i_stop - i_start; i++) {
+      //         while (i_other < n_pix_other && pixel_idx[i_start_other + i_other] < pixel_idx[i_start + i]) {
+      //             i_other += 1;
+      //         }
+      //         if (i_other == n_pix_other) continue;
+      //         if (pixel_idx[i_start_other + i_other] == pixel_idx[i_start + i]
+      //             && qmask[i_start + i] == current_qbin
+      //             && qmask[i_start_other + i_other] == current_qbin
+      //         ){
+      //             res += data[i_start + i] * data[i_start_other + i_other];
+      //         }
+      //     }
+      // }
       // ========================================================================  /off-diagonal
 
 
-  }
+      barrier(CLK_LOCAL_MEM_FENCE);
+    }
 
+    // if (frame_idx > time_idx) return;
 
+    if (frame_idx == time_idx) {
     size_t out_idx = get_index(n_times, time_idx, frame_idx);
-    if (tid == 0) corr_matrix[out_idx] = res;
+    corr_matrix[out_idx] = res;
+    }
+    // corr_matrix[out_idx] = tid;
 }
 
 
 
+kernel void build_correlation_matrix_image(
+    const global DTYPE* data,
+    const global uint* pixel_idx,
+    const global OFFSET_DTYPE* frame_offset,
+    const global char* qmask,
+    global RES_DTYPE* corr_matrix,
+    global RES_DTYPE* sums,
+    int n_frames,
+    int n_times,
+    int current_qbin
+) {
+
+    uint frame_idx = get_global_id(1);
+    if (frame_idx  >= n_frames) return;
+    uint idx = get_global_id(0);
+    uint i_start_0 = frame_offset[frame_idx];
+    uint i_stop_0 = frame_offset[frame_idx + 1];
+    if (i_start_0 + idx >= i_stop_0) return;
+
+    char qbin = qmask[i_start_0 + idx] - 1;
+    if ((qbin < 0) || (current_qbin > 0 && qbin != current_qbin)) return;
+    size_t cor_matrix_flat_size = (n_frames * (n_times + 1)) / 2;
+
+    uint my_pix_idx = pixel_idx[i_start_0 + idx];
+    RES_DTYPE d = (RES_DTYPE) data[i_start_0 + idx];
 
 
+    // corr_matrix[i, i] = sum_in_bin(frame[i] * frame[i])
+    size_t out_idx = get_index(n_times, frame_idx, frame_idx);
+    if (current_qbin < 0) out_idx += qbin * cor_matrix_flat_size;
+    atomic_add(corr_matrix + out_idx, d * d);
+    // sums[i] = sum_in_bin(frame[i])
+    atomic_add(sums + frame_idx, d);
+
+    for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times && other_frame_idx - frame_idx < n_times/2 ; other_frame_idx++) {
+        // data for current frame is in data[i_start:i_stop]
+        uint i_start = frame_offset[other_frame_idx];
+        uint i_stop = frame_offset[other_frame_idx + 1];
+        // is there an index 'i' in pixel_idx[i_start:i_stop] such that i == my_pix_idx ?
+        uint i = binary_search(my_pix_idx, pixel_idx + i_start, i_stop - i_start);
+        if (i == i_stop - i_start) continue;
+        // if so, accumulate the result
+        RES_DTYPE d_other = (RES_DTYPE) data[i_start + i];
+        out_idx = get_index(n_times, other_frame_idx, frame_idx);
+        if (current_qbin < 0) out_idx += qbin * cor_matrix_flat_size;
+        atomic_add(corr_matrix + out_idx, d * d_other);
+    }
+}
 
 

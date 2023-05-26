@@ -2,7 +2,7 @@ from time import perf_counter
 import numpy as np
 from pyopencl import LocalMemory
 import pyopencl.array as parray
-from ..utils import get_opencl_srcfile
+from ..utils import get_opencl_srcfile, updiv
 from .common import OpenclCorrelator
 
 class MatrixEventCorrelator(OpenclCorrelator):
@@ -42,7 +42,8 @@ class MatrixEventCorrelator(OpenclCorrelator):
             print("Warning: incrementing n_times to have a proper-sized matrix")
             self.n_times += 1
         self.correlation_matrix_flat_size = self.nframes * (self.n_times + 1) // 2
-        self.d_corr_matrix = parray.zeros(self.queue, self.correlation_matrix_flat_size, np.uint32) # TODO dtype
+        # TODO dtype + q-bin selection if needed (to reduce array size)
+        self.d_corr_matrix = parray.zeros(self.queue, (self.n_bins, self.correlation_matrix_flat_size), np.uint32)
 
 
     def _setup_kernels(self):
@@ -54,9 +55,12 @@ class MatrixEventCorrelator(OpenclCorrelator):
             ]
         )
         self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened_wg")
+        self.build_correlation_matrix_image = self.kernels.get_kernel("build_correlation_matrix_image")
 
-        self.grid = (self.nframes, self.n_times)
-        self.wg = (32, 1) # None # tune ?
+        wg_size = 16 # Tune ?
+        self.wg = (wg_size, 1) # None
+        self.grid = [int(x) for x in [self.n_times , self.nframes]] # sanitize
+        # self.grid[0] = updiv(updiv(self.n_times, wg_size), wg_size)*wg_size
 
 
 
@@ -117,5 +121,65 @@ class MatrixEventCorrelator(OpenclCorrelator):
         print("build correlation matrix:", (perf_counter() - t0) * 1e3)
 
         # self._reset_arrays(["vol_times", "vol_data", "offsets"])
+
+
+
+
+
+    def build_correlation_matrix_v2(self, data, pixel_indices, offsets):
+
+
+        wg = None
+        grid = (11000, self.nframes)
+
+
+        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
+        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
+        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
+        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype
+
+
+        t0 = perf_counter()
+        qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
+        print("_get_compacted_qmask: ", (perf_counter() - t0) * 1e3)
+        d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8)) # !
+
+        t0 = perf_counter()
+        evt = self.build_correlation_matrix_image(
+            self.queue,
+            grid,
+            wg,
+            d_data.data,
+            d_pixel_indices.data,
+            d_offsets.data,
+            d_qmask_compacted.data,
+            self.d_corr_matrix.data,
+            self.d_sums.data,
+            np.int32(self.nframes),
+            np.int32(self.n_times),
+            np.int32(-1),
+        )
+        evt.wait()
+        self.profile_add(evt, "Event correlator")
+        print("build correlation matrix:", (perf_counter() - t0) * 1e3)
+
+        # self._reset_arrays(["vol_times", "vol_data", "offsets"])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
         return self.d_corr_matrix.get()
