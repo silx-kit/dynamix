@@ -75,12 +75,22 @@ static inline uint binary_search(uint val, uint* arr, uint n) {
 
 /*
   Build (half) the correlation matrix from the "events" data structure.
+  Threads are launched by a 1D grid (n_times, 1).
+  Each thread computes corr[i, i] = sum_{current_qbin}(frame[i] * frame[j])
+    then corr[i, i+1] = sum_{curr_bin}(frame[i] * frame[i+1])
+    and so on
+
+  This means that threads 0 read the entire dataset (!),
+    thread 1 reads frame 1, 2, .... N-1,
+    thread 2 reads frame 2, 3, .... N-1
+
+  Parameters
+  -----------
   data: array of 'total_nnz' elements, where 'total_nnz' is the total number of non-zero pixels in the XPCS data
     (i.e total number of 'events')
   pixel_idx: array of 'total_nnz' elements
   offset: array of n_frames + 1 elements. offset[i+1]-offset[i] gives the number of non-zero elements in frame number 'i'.
   qmask_compacted: array of 'total_nnz' elements. qmask_comacted[idx] gives the q-bin of pixel at (compacted) index 'idx'.
-
 
 */
 
@@ -106,12 +116,17 @@ kernel void build_correlation_matrix_diagonal(
            res += ((RES_DTYPE) data[i]) * ((RES_DTYPE) data[i]);
         }
     }
-    corr_matrix[frame_idx * n_frames + frame_idx] = res; // current_qbin; // res; // i_stop - i_start; // res;
+    corr_matrix[frame_idx * n_frames + frame_idx] = res;
+
+    // TODO same for off-diagonal elements
 
 }
 
-
-
+/**
+Build (half) the correlation matrix.
+Threads are launched with a 2D grid (n_frames, n_times)  where n_times == n_frames most of the time.
+This means that each given frame will be read by all threads.
+**/
 kernel void build_correlation_matrix_flattened(
     const global DTYPE* data,
     const global uint* pixel_idx,
@@ -165,6 +180,10 @@ kernel void build_correlation_matrix_flattened(
 }
 
 
+
+/**
+Same as above, but threads are launched by groups, so that each frame is read at most n_frames / group_size times.
+**/
 kernel void build_correlation_matrix_flattened_wg(
     const global DTYPE* data,
     const global uint* pixel_idx,
@@ -252,7 +271,24 @@ kernel void build_correlation_matrix_flattened_wg(
 }
 
 
+/**
+Must be launched with grid (max_nonzero_per_frame, n_frames).
 
+Each "line of threads" handles one vector of space-compacted data.
+
+
+        threads line 0 |  threads line 1  | threads line 2   ...
+data = [nnz_frame_0    | nnz_frame_1      | nnz_frame_2      ...]   // space-compacted
+    off[0]           off[1]             off[2]                      // offsets
+
+
+Therefore, a given thread has one pixel_idx.
+It will look (through binary search) if this pixel index is found in the other frames vectors.
+
+Each threads reads at most 1 + n_times/2 * log2(max_nnz)   elements,
+  where max_nnz is the max length of a space-compacted vector (i.e the maximum number of non-zero items in frames)
+
+**/
 kernel void build_correlation_matrix_image(
     const global DTYPE* data,
     const global uint* pixel_idx,
@@ -304,9 +340,13 @@ kernel void build_correlation_matrix_image(
 
 
 
+/**
+Build (half) the correlation matrix, using time-compacted data.
 
 
-
+Each thread reads at most max_nnz_t elements.
+This seems to be much faster than space-based compaction, but the data has to be re-compacted.
+**/
 kernel void build_correlation_matrix_times_representation(
     const global uint* vol_times_array,
     const global DTYPE* vol_data_array,
