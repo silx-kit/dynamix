@@ -53,7 +53,6 @@ class MatrixEventCorrelator(OpenclCorrelator):
             kernel_files=kernel_files,
             compile_options=[
                 "-DDTYPE=%s" % self.c_dtype,
-                "-DIMAGE_WIDTH=%s" % self.shape[1],
                 "-DMAX_EVT_COUNT=%d" % self._max_nnz,
             ]
         )
@@ -61,7 +60,6 @@ class MatrixEventCorrelator(OpenclCorrelator):
         self.build_correlation_matrix_image = self.kernels.get_kernel("build_correlation_matrix_image")
         self.build_correlation_matrix_times_representation = self.kernels.get_kernel("build_correlation_matrix_times_representation")
         self.space_compact_to_time_compact_kernel = self.kernels.get_kernel("space_compact_to_time_compact")
-        self.space_compact_to_time_compact_kernel_v2 = self.kernels.get_kernel("space_compact_to_time_compact_alternate")
         self.space_compact_to_time_compact_stage2_kernel = self.kernels.get_kernel("space_compact_to_time_compact_stage2_sort")
 
         wg_size = 16 # Tune ?
@@ -329,6 +327,5 @@ class MatrixEventCorrelator(OpenclCorrelator):
         print("[space->times stage 2] kernel:", (perf_counter() - t0) * 1e3)
 
         return d_t_data.get(), d_t_times.get(), offsets
-
 
 
