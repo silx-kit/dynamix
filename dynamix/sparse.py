@@ -11,6 +11,7 @@ from math import ceil
 from pyopencl.tools import dtype_to_ctype
 import pyopencl.array as parray
 from silx.opencl.processing import OpenclProcessing
+from .utils import get_opencl_srcfile
 
 
 def dense_to_times(frames):
@@ -116,18 +117,11 @@ def estimate_max_events_in_times_from_space_compacted_data(pix_idx, offsets, est
 class SpaceToTimeCompaction(OpenclProcessing):
     kernel_files = ["matrix_evtcorrelator.cl"]
 
-    def __init__(self, shape, dtype=np.uint8, offset_dtype=np.uint32):
-        super().__init__(
-            self,
-            ctx=None,
-            devicetype="all",
-            platformid=None,
-            deviceid=None,
-            block_size=None,
-            memory=None,
-            profile=False,
-        )
+    def __init__(self, shape, dtype=np.uint8, offset_dtype=np.uint32, **oclprocessing_kwargs):
         self.shape = shape
+        self.dtype = dtype
+        self.offset_dtype = offset_dtype
+        super().__init__(**oclprocessing_kwargs)
 
     def _setup_kernels(self, max_time_nnz=250):
         self.max_time_nnz = max_time_nnz
@@ -173,12 +167,13 @@ class SpaceToTimeCompaction(OpenclProcessing):
         self.profile_add(evt, "space->time stage 1")
 
     def _space_compact_to_time_compact_stage2(self):
+        # Could be made on device directly. But parray.cumsum() takes some time to compile.
         t_counter = self._t_counter.get()
         offsets1 = np.cumsum(t_counter, dtype=t_counter.dtype)
         offsets = np.hstack([np.array([0], dtype=np.uint32), offsets1])
 
         d_t_offsets = parray.to_device(self.queue, offsets)
-        d_t_data = parray.zeros(self.queue, offsets[-1], t_data_tmp.dtype)
+        d_t_data = parray.zeros(self.queue, offsets[-1], self._d_t_data_tmp.dtype)
         d_t_times = parray.zeros(self.queue, d_t_data.size, np.uint32)
 
         wg = None
@@ -188,8 +183,8 @@ class SpaceToTimeCompaction(OpenclProcessing):
             self.queue,
             grid,
             wg,
-            d_t_data_tmp.data,
-            d_t_times_tmp.data,
+            self._d_t_data_tmp.data,
+            self._d_t_times_tmp.data,
             d_t_offsets.data,
             d_t_data.data,
             d_t_times.data,
@@ -202,6 +197,13 @@ class SpaceToTimeCompaction(OpenclProcessing):
 
     def space_compact_to_time_compact(self, data, pixel_indices, offsets):
         max_nnz_space = np.diff(offsets).max()
+
+        # Might be good to have a more clever memory management
+        d_data = parray.to_device(self.queue, data)
+        d_pixel_indices = parray.to_device(self.queue, pixel_indices)
+        d_offsets = parray.to_device(self.queue, offsets)
+        #
+
         self._space_compact_to_time_compact_stage1(d_data, d_pixel_indices, d_offsets, max_nnz_space)
         d_t_data, d_t_times, d_t_offsets = self._space_compact_to_time_compact_stage2()
 
