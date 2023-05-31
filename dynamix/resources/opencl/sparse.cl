@@ -10,9 +10,9 @@ kernel void space_compact_to_time_compact(
     global uint* t_times,
     global uint* counters,
 
-    int n_frames,
     int Nx,
-    int Ny
+    int Ny,
+    int n_frames
 ) {
 
     uint idx = get_global_id(0);
@@ -33,6 +33,7 @@ kernel void space_compact_to_time_compact(
     }
 }
 
+/*
 // Slower
 kernel void space_compact_to_time_compact_alternate(
     const global DTYPE* data,
@@ -71,7 +72,7 @@ kernel void space_compact_to_time_compact_alternate(
     }
     counters[pos] = t;
 }
-
+*/
 
 kernel void space_compact_to_time_compact_stage2(
     const global DTYPE* t_data_tmp,

@@ -327,14 +327,15 @@ kernel void build_correlation_matrix_times_representation(
     const global int* q_mask,
     global RES_DTYPE* corr_matrix,
     global uint* sums,
+    int image_width,
     int image_height,
     int n_frames,
     int n_times
 ) {
     uint x = get_global_id(0);
     uint y = get_global_id(1);
-    if ((x >= IMAGE_WIDTH) || (y >= image_height)) return;
-    uint pos = y*IMAGE_WIDTH + x;
+    if ((x >= image_width) || (y >= image_height)) return;
+    uint pos = y*image_width + x;
 
     int bin_idx = q_mask[pos] - 1;
     if (bin_idx < 0) return;

@@ -1,3 +1,4 @@
+from os import path
 from time import perf_counter
 import numpy as np
 from pyopencl import LocalMemory
@@ -54,13 +55,14 @@ class MatrixEventCorrelator(OpenclCorrelator):
             compile_options=[
                 "-DDTYPE=%s" % self.c_dtype,
                 "-DMAX_EVT_COUNT=%d" % self._max_nnz,
+                "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
             ]
         )
         self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened_wg")
         self.build_correlation_matrix_image = self.kernels.get_kernel("build_correlation_matrix_image")
         self.build_correlation_matrix_times_representation = self.kernels.get_kernel("build_correlation_matrix_times_representation")
-        self.space_compact_to_time_compact_kernel = self.kernels.get_kernel("space_compact_to_time_compact")
-        self.space_compact_to_time_compact_stage2_kernel = self.kernels.get_kernel("space_compact_to_time_compact_stage2_sort")
+        # self.space_compact_to_time_compact_kernel = self.kernels.get_kernel("space_compact_to_time_compact")
+        # self.space_compact_to_time_compact_stage2_kernel = self.kernels.get_kernel("space_compact_to_time_compact_stage2_sort")
 
         wg_size = 16 # Tune ?
         self.wg = (wg_size, 1) # None
@@ -194,6 +196,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
             self.d_qmask.data,
             self.d_corr_matrix.data,
             self.d_sums.data,
+            np.int32(self.shape[1]),
             np.int32(self.shape[0]),
             np.int32(self.nframes),
             np.int32(self.n_times),
