@@ -1,10 +1,10 @@
 import numpy as np
-from os import linesep
 
 import pyopencl.array as parray
 from pyopencl.tools import dtype_to_ctype
 from silx.opencl.common import pyopencl as cl
 from silx.opencl.processing import OpenclProcessing, KernelContainer
+from ..utils import _compile_kernels
 
 
 class BaseCorrelator(object):
@@ -197,19 +197,4 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
     # Overwrite OpenclProcessing.compile_kernel, as it does not support
     # kernels outside silx/opencl/resources
     def compile_kernels(self, kernel_files=None, compile_options=None):
-        kernel_files = kernel_files or self.kernel_files
-
-        allkernels_src = []
-        for kernel_file in kernel_files:
-            with open(kernel_file) as fid:
-                kernel_src = fid.read()
-            allkernels_src.append(kernel_src)
-        allkernels_src = linesep.join(allkernels_src)
-
-        compile_options = compile_options or self.get_compiler_options()
-        try:
-            self.program = cl.Program(self.ctx, allkernels_src).build(options=compile_options)
-        except (cl.MemoryError, cl.LogicError) as error:
-            raise MemoryError(error)
-        else:
-            self.kernels = KernelContainer(self.program)
+        _compile_kernels(self, kernel_files=kernel_files, compile_options=compile_options)
