@@ -11,7 +11,7 @@ from math import ceil
 from pyopencl.tools import dtype_to_ctype
 import pyopencl.array as parray
 from silx.opencl.processing import OpenclProcessing
-from .utils import get_opencl_srcfile
+from .utils import get_opencl_srcfile, _compile_kernels
 
 
 def dense_to_times(frames):
@@ -113,15 +113,17 @@ def estimate_max_events_in_times_from_space_compacted_data(pix_idx, offsets, est
     num_events_in_subset = np.bincount(pix_idx[: offsets[estimate_from_n_frames]]).max()
     return ceil((num_events_in_subset / estimate_from_n_frames) * (offsets.size - 1))
 
-
+from os import path
 class SpaceToTimeCompaction(OpenclProcessing):
-    kernel_files = ["matrix_evtcorrelator.cl"]
 
-    def __init__(self, shape, dtype=np.uint8, offset_dtype=np.uint32, **oclprocessing_kwargs):
+    kernel_files = ["sparse.cl"]
+
+    def __init__(self, shape, max_time_nnz=250, dtype=np.uint8, offset_dtype=np.uint32, **oclprocessing_kwargs):
+        super().__init__(**oclprocessing_kwargs)
         self.shape = shape
         self.dtype = dtype
         self.offset_dtype = offset_dtype
-        super().__init__(**oclprocessing_kwargs)
+        self._setup_kernels(max_time_nnz=max_time_nnz)
 
     def _setup_kernels(self, max_time_nnz=250):
         self.max_time_nnz = max_time_nnz
@@ -132,6 +134,7 @@ class SpaceToTimeCompaction(OpenclProcessing):
                 "-DDTYPE=%s" % dtype_to_ctype(self.dtype),
                 "-DOFFSET_DTYPE=%s" % dtype_to_ctype(self.offset_dtype),
                 "-DMAX_EVT_COUNT=%d" % self.max_time_nnz,
+                "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
             ],
         )
         self.space_compact_to_time_compact_kernel = self.kernels.get_kernel("space_compact_to_time_compact")
@@ -139,10 +142,14 @@ class SpaceToTimeCompaction(OpenclProcessing):
             "space_compact_to_time_compact_stage2_sort"
         )
 
+    def compile_kernels(self, kernel_files=None, compile_options=None):
+        _compile_kernels(self, kernel_files=kernel_files, compile_options=compile_options)
+
+
     def _space_compact_to_time_compact_stage1(self, data, pixel_indices, offsets, max_nnz_space):
         self._d_t_data_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), np.uint8)
         self._d_t_times_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), np.uint32)
-        self._d_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
+        self._d_t_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
 
         n_frames = offsets.size - 1
 
@@ -158,17 +165,17 @@ class SpaceToTimeCompaction(OpenclProcessing):
             offsets.data,
             self._d_t_data_tmp.data,
             self._d_t_times_tmp.data,
-            self._d_counter.data,
-            np.int32(n_frames),
+            self._d_t_counter.data,
             np.int32(self.shape[1]),
             np.int32(self.shape[0]),
+            np.int32(n_frames),
         )
         evt.wait()
         self.profile_add(evt, "space->time stage 1")
 
     def _space_compact_to_time_compact_stage2(self):
         # Could be made on device directly. But parray.cumsum() takes some time to compile.
-        t_counter = self._t_counter.get()
+        t_counter = self._d_t_counter.get()
         offsets1 = np.cumsum(t_counter, dtype=t_counter.dtype)
         offsets = np.hstack([np.array([0], dtype=np.uint32), offsets1])
 
@@ -199,9 +206,9 @@ class SpaceToTimeCompaction(OpenclProcessing):
         max_nnz_space = np.diff(offsets).max()
 
         # Might be good to have a more clever memory management
-        d_data = parray.to_device(self.queue, data)
-        d_pixel_indices = parray.to_device(self.queue, pixel_indices)
-        d_offsets = parray.to_device(self.queue, offsets)
+        d_data = parray.to_device(self.queue, data.astype(self.dtype))
+        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
+        d_offsets = parray.to_device(self.queue, offsets.astype(self.offset_dtype))
         #
 
         self._space_compact_to_time_compact_stage1(d_data, d_pixel_indices, d_offsets, max_nnz_space)
