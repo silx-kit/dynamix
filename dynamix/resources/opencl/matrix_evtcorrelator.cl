@@ -67,7 +67,7 @@ static inline uint binary_search(uint val, uint* arr, uint n) {
 
 */
 
-kernel void build_correlation_matrix_diagonal(
+kernel void build_correlation_matrix_v1(
     const global DTYPE* data,
     const global uint* pixel_idx,
     const global OFFSET_DTYPE* offset,
@@ -100,7 +100,7 @@ Build (half) the correlation matrix.
 Threads are launched with a 2D grid (n_frames, n_times)  where n_times == n_frames most of the time.
 This means that each given frame will be read by all threads.
 **/
-kernel void build_correlation_matrix_flattened(
+kernel void build_correlation_matrix_v2(
     const global DTYPE* data,
     const global uint* pixel_idx,
     const global OFFSET_DTYPE* offset,
@@ -157,7 +157,7 @@ kernel void build_correlation_matrix_flattened(
 /**
 Same as above, but threads are launched by groups, so that each frame is read at most n_frames / group_size times.
 **/
-kernel void build_correlation_matrix_flattened_wg(
+kernel void build_correlation_matrix_v2b(
     const global DTYPE* data,
     const global uint* pixel_idx,
     const global OFFSET_DTYPE* frame_offset,
@@ -262,7 +262,7 @@ Each threads reads at most 1 + n_times/2 * log2(max_nnz)   elements,
   where max_nnz is the max length of a space-compacted vector (i.e the maximum number of non-zero items in frames)
 
 **/
-kernel void build_correlation_matrix_image(
+kernel void build_correlation_matrix_v3(
     const global DTYPE* data,
     const global uint* pixel_idx,
     const global OFFSET_DTYPE* frame_offset,

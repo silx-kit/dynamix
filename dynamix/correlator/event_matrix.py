@@ -54,9 +54,10 @@ class MatrixEventCorrelator(OpenclCorrelator):
                 "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
             ]
         )
-        self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix_flattened_wg")
-        self.build_correlation_matrix_image = self.kernels.get_kernel("build_correlation_matrix_image")
-        self.build_correlation_matrix_times_representation = self.kernels.get_kernel("build_correlation_matrix_times_representation")
+        self.build_correlation_matrix_kernel_v1 = self.kernels.get_kernel("build_correlation_matrix_v1")
+        self.build_correlation_matrix_kernel_v2 = self.kernels.get_kernel("build_correlation_matrix_v2")
+        self.build_correlation_matrix_kernel_v2b = self.kernels.get_kernel("build_correlation_matrix_v2b")
+        self.build_correlation_matrix_kernel_v3 = self.kernels.get_kernel("build_correlation_matrix_v3")
 
         # wg_size = 16 # Tune ?
         # self.wg = (wg_size, 1) # None
@@ -108,26 +109,22 @@ class MatrixEventCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Build correlation matrix (flattened_wg)")
 
 
-    def build_correlation_matrix_v2(self, data, pixel_indices, offsets):
-        # wg = None
-        # grid = (11*1024, self.nframes, 1)
-        wg = (512, 1)
-        grid = (updiv(11000, wg[0])*wg[0], self.nframes)
-        print(grid)
+    def build_correlation_matrix_v3(self, data, pixel_indices, offsets):
+        qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
+        d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8)) # !
 
+        # TODO data setter
         d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
         d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
         d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
         self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype
+        #
 
+        max_nnz_space = np.diff(offsets).max()
+        wg = (512, 1) # TODO tune
+        grid = (updiv(max_nnz_space, wg[0])*wg[0], self.nframes)
 
-        t0 = perf_counter()
-        qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
-        print("_get_compacted_qmask: ", (perf_counter() - t0) * 1e3)
-        d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8)) # !
-
-        t0 = perf_counter()
-        evt = self.build_correlation_matrix_image(
+        evt = self.build_correlation_matrix_kernel_v3(
             self.queue,
             grid,
             wg,
@@ -142,10 +139,8 @@ class MatrixEventCorrelator(OpenclCorrelator):
             np.int32(-1),
         )
         evt.wait()
-        self.profile_add(evt, "Event correlator")
-        print("build correlation matrix [binary_search]:", (perf_counter() - t0) * 1e3)
+        self.profile_add(evt, "Build matrix correlation (v4)")
 
-        # self._reset_arrays(["vol_times", "vol_data", "offsets"])
         return self.d_corr_matrix.get()
 
 
