@@ -49,7 +49,7 @@ static inline uint binary_search(uint val, uint* arr, uint n) {
 /*
   Build (half) the correlation matrix from the "events" data structure.
   Threads are launched by a 1D grid (n_times, 1).
-  Each thread computes corr[i, i] = sum_{current_qbin}(frame[i] * frame[j])
+  Each thread computes corr[i, j] = sum_{current_qbin}(frame[i] * frame[j])
     then corr[i, i+1] = sum_{curr_bin}(frame[i] * frame[i+1])
     and so on
 
@@ -142,7 +142,7 @@ kernel void build_correlation_matrix_v2(
             if (i_other == n_pix_other) continue;
             if (pixel_idx[i_start_other + i_other] == pixel_idx[i_start + i]
                 && qmask[i_start + i] == current_qbin
-                && qmask[i_start_other + i_other] == current_qbin
+                // && qmask[i_start_other + i_other] == current_qbin
             ){
                 res += data[i_start + i] * data[i_start_other + i_other];
             }
@@ -174,7 +174,6 @@ kernel void build_correlation_matrix_v2b(
     uint frame_idx = get_global_id(1);
     uint tid = get_local_id(0);
     uint wg_size = get_local_size(0);
-    // if (time_idx >= n_times || frame_idx >= n_frames || frame_idx > time_idx) return;
     if (time_idx >= n_times || frame_idx >= n_frames) return;
 
     OFFSET_DTYPE i_start = frame_offset[frame_idx], i_stop = frame_offset[frame_idx+1];
@@ -187,8 +186,6 @@ kernel void build_correlation_matrix_v2b(
 
       // ========================================================================
       // Fetch XX[i_start:i_stop] into shared memory where XX is 'data' and 'pixel_idx'
-      // local DTYPE s_data[SHARED_ARRAYS_SIZE];
-      // local char s_qmask[SHARED_ARRAYS_SIZE];
       for (offset = 0; offset + tid < SHARED_ARRAYS_SIZE ; offset += wg_size) {
           if (i_start + s_offset + offset + tid >= i_stop) break;
           s_data[offset + tid] = data[i_start + s_offset + offset + tid];
@@ -209,25 +206,25 @@ kernel void build_correlation_matrix_v2b(
       }
 
       // ========================================================================  off-diagonal
-      // else {
-      //     // Off-diagonal
-      //     OFFSET_DTYPE i_start_other = frame_offset[time_idx], i_stop_other = frame_offset[time_idx+1];
+      else if (0) {
+          // Off-diagonal
+          OFFSET_DTYPE i_start_other = frame_offset[time_idx], i_stop_other = frame_offset[time_idx+1];
 
-      //     uint i_other = 0;
-      //     uint n_pix_other = i_stop_other - i_start_other;
-      //     for (uint i = 0; i < i_stop - i_start; i++) {
-      //         while (i_other < n_pix_other && pixel_idx[i_start_other + i_other] < pixel_idx[i_start + i]) {
-      //             i_other += 1;
-      //         }
-      //         if (i_other == n_pix_other) continue;
-      //         if (pixel_idx[i_start_other + i_other] == pixel_idx[i_start + i]
-      //             && qmask[i_start + i] == current_qbin
-      //             && qmask[i_start_other + i_other] == current_qbin
-      //         ){
-      //             res += data[i_start + i] * data[i_start_other + i_other];
-      //         }
-      //     }
-      // }
+          uint i_other = 0;
+          uint n_pix_other = i_stop_other - i_start_other;
+          for (uint i = 0; i < i_stop - i_start; i++) {
+              while (i_other < n_pix_other && pixel_idx[i_start_other + i_other] < pixel_idx[i_start + i]) {
+                  i_other += 1;
+              }
+              if (i_other == n_pix_other) continue;
+              if (pixel_idx[i_start_other + i_other] == pixel_idx[i_start + i]
+                  && qmask[i_start + i] == current_qbin
+                  && qmask[i_start_other + i_other] == current_qbin
+              ){
+                  res += data[i_start + i] * data[i_start_other + i_other];
+              }
+          }
+      }
       // ========================================================================  /off-diagonal
 
 

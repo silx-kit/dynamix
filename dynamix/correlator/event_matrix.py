@@ -52,6 +52,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
                 "-DDTYPE=%s" % self.c_dtype,
                 "-DMAX_EVT_COUNT=%d" % self._max_nnz,
                 "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
+                "-DSHARED_ARRAYS_SIZE=%d" % 11000,
             ]
         )
         self.build_correlation_matrix_kernel_v1 = self.kernels.get_kernel("build_correlation_matrix_v1")
