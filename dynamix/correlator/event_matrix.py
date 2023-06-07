@@ -59,6 +59,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
         self.build_correlation_matrix_kernel_v2 = self.kernels.get_kernel("build_correlation_matrix_v2")
         self.build_correlation_matrix_kernel_v2b = self.kernels.get_kernel("build_correlation_matrix_v2b")
         self.build_correlation_matrix_kernel_v3 = self.kernels.get_kernel("build_correlation_matrix_v3")
+        self.build_correlation_matrix_kernel_times = self.kernels.get_kernel("build_correlation_matrix_times_representation")
 
         # wg_size = 16 # Tune ?
         # self.wg = (wg_size, 1) # None
@@ -108,7 +109,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
             np.int32(1),
         )
         evt.wait()
-        self.profile_add(evt, "Build matrix correlation (v2)")
+        self.profile_add(evt, "Build matrix correlation (v1)")
 
         return self.d_corr_matrix.get()
 
@@ -226,15 +227,18 @@ class MatrixEventCorrelator(OpenclCorrelator):
         wg = None
         grid = tuple(self.shape[::-1])
 
+        # TODO data setter
         d_data = parray.to_device(self.queue, data)
         d_times = parray.to_device(self.queue, times)
         d_offsets = parray.to_device(self.queue, offsets)
 
+        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype
+        #
+
         self.d_corr_matrix.fill(0)
         self.d_sums.fill(0)
 
-        t0 = perf_counter()
-        evt = self.build_correlation_matrix_times_representation(
+        evt = self.build_correlation_matrix_kernel_times(
             self.queue,
             grid,
             wg,
@@ -251,8 +255,6 @@ class MatrixEventCorrelator(OpenclCorrelator):
         )
         evt.wait()
         self.profile_add(evt, "Event correlator")
-        print("build correlation matrix (times repr.):", (perf_counter() - t0) * 1e3)
 
-        # self._reset_arrays(["vol_times", "vol_data", "offsets"])
         return self.d_corr_matrix.get()
 

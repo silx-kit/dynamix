@@ -185,6 +185,7 @@ kernel void build_correlation_matrix_v2(
 
 /**
 Same as above, but threads are launched by groups, so that each frame is read at most n_frames / group_size times.
+Not working yet!
 **/
 kernel void build_correlation_matrix_v2b(
     const global DTYPE* data,
@@ -235,7 +236,7 @@ kernel void build_correlation_matrix_v2b(
       }
 
       // ========================================================================  off-diagonal
-      else if (0) {
+      else  {
           // Off-diagonal
           OFFSET_DTYPE i_start_other = frame_offset[time_idx], i_stop_other = frame_offset[time_idx+1];
 
@@ -263,11 +264,13 @@ kernel void build_correlation_matrix_v2b(
     // if (frame_idx > time_idx) return;
 
     if (frame_idx == time_idx) {
-    size_t out_idx = get_index(n_times, time_idx, frame_idx);
-    corr_matrix[out_idx] = res;
+        size_t out_idx = get_index(n_times, time_idx, frame_idx);
+        corr_matrix[out_idx] = res;
     }
-    // corr_matrix[out_idx] = tid;
 }
+
+
+
 
 
 /**
