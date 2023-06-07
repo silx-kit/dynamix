@@ -79,6 +79,39 @@ class MatrixEventCorrelator(OpenclCorrelator):
         return qmask_compacted
         #
 
+    def build_correlation_matrix_v1(self, data, pixel_indices, offsets):
+        qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
+        d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8)) # !
+
+        # TODO data setter
+        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
+        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
+        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
+        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype
+        #
+
+        wg = None
+        grid = (self.n_times, self.n_bins)
+
+        evt = self.build_correlation_matrix_kernel_v1(
+            self.queue,
+            grid,
+            wg,
+            d_data.data,
+            d_pixel_indices.data,
+            d_offsets.data,
+            d_qmask_compacted.data,
+            self.d_corr_matrix.data,
+            # self.d_sums.data,
+            np.int32(self.nframes),
+            np.int32(self.n_times),
+            np.int32(1),
+        )
+        evt.wait()
+        self.profile_add(evt, "Build matrix correlation (v2)")
+
+        return self.d_corr_matrix.get()
+
 
     def build_correlation_matrix_v2(self, data, pixel_indices, offsets):
         qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)

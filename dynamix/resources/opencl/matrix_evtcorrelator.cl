@@ -53,7 +53,7 @@ static inline uint binary_search(uint val, uint* arr, uint n) {
     then corr[i, i+1] = sum_{curr_bin}(frame[i] * frame[i+1])
     and so on
 
-  This means that threads 0 read the entire dataset (!),
+  This means that threads 0 reads the entire dataset (!),
     thread 1 reads frame 1, 2, .... N-1,
     thread 2 reads frame 2, 3, .... N-1
 
@@ -74,12 +74,15 @@ kernel void build_correlation_matrix_v1(
     const global char* qmask,
     global RES_DTYPE* corr_matrix,
     int n_frames,
-    int n_bins
+    int n_times,
+    int current_qbin
 ) {
 
     uint frame_idx = get_global_id(0);
-    uint current_qbin = get_global_id(1) + 1;
-    if (current_qbin > n_bins || frame_idx >= n_frames) return;
+    if (frame_idx >= n_frames) return;
+
+    size_t cor_matrix_flat_size = (n_frames * (n_times + 1)) / 2;
+    size_t out_idx;
 
     OFFSET_DTYPE i_start = offset[frame_idx], i_stop = offset[frame_idx+1];
 
@@ -89,11 +92,37 @@ kernel void build_correlation_matrix_v1(
            res += ((RES_DTYPE) data[i]) * ((RES_DTYPE) data[i]);
         }
     }
-    corr_matrix[frame_idx * n_frames + frame_idx] = res;
+    out_idx = get_index(n_times, frame_idx, frame_idx) + (current_qbin - 1) * cor_matrix_flat_size;
+    corr_matrix[out_idx] = res;
 
-    // TODO same for off-diagonal elements
+    // Off-diagonal elements
+    // TODO process n_times/2 elements instead of n_times to balance the workload between threads
+    for (uint time_idx=frame_idx+1; time_idx < n_times; time_idx++) {
+        OFFSET_DTYPE i_start_other = offset[time_idx], i_stop_other = offset[time_idx+1];
+        res = 0;
 
+        uint i_other = 0;
+        uint n_pix_other = i_stop_other - i_start_other;
+        for (uint i = 0; i < i_stop - i_start; i++) {
+            while (i_other < n_pix_other && pixel_idx[i_start_other + i_other] < pixel_idx[i_start + i]) {
+                i_other += 1;
+            }
+            if (i_other == n_pix_other) continue;
+            if (pixel_idx[i_start_other + i_other] == pixel_idx[i_start + i]
+                && qmask[i_start + i] == current_qbin
+                // && qmask[i_start_other + i_other] == current_qbin
+            ){
+                res += data[i_start + i] * data[i_start_other + i_other];
+            }
+        }
+        out_idx = get_index(n_times, time_idx, frame_idx) + (current_qbin - 1) * cor_matrix_flat_size;
+        corr_matrix[out_idx] = res;
+
+    } // for other frames
 }
+
+
+
 
 /**
 Build (half) the correlation matrix.
