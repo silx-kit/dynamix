@@ -254,7 +254,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
             np.int32(self.n_times),
         )
         evt.wait()
-        self.profile_add(evt, "Event correlator")
+        self.profile_add(evt, "Build matrix correlation (times repr.)")
 
         return self.d_corr_matrix.get()
 

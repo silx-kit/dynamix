@@ -325,6 +325,7 @@ kernel void build_correlation_matrix_v3(
     // sums[i] = sum_in_bin(frame[i])
     atomic_add(sums + frame_idx, d);
 
+    // TODO balance workload among threads: each thread handles n_times/2 frames
     for (uint other_frame_idx = frame_idx + 1; other_frame_idx < n_times /* && other_frame_idx - frame_idx < n_times/2 */ ; other_frame_idx++) {
         // data for current frame is in data[i_start:i_stop]
         uint i_start = frame_offset[other_frame_idx];
@@ -394,8 +395,6 @@ kernel void build_correlation_matrix_times_representation(
             size_t out_idx = get_index(n_times, times[i_t], times[i_t - i_tau]);
             out_idx += bin_idx * cor_matrix_flat_size;
             atomic_add(corr_matrix + out_idx, data[i_t] * data[i_t - i_tau]);
-
-            // was: atomic_add(my_res_tau + tau, data[i_t] * data[i_t - i_tau]);
         }
     }
 }
