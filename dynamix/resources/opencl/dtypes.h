@@ -10,10 +10,6 @@
   #define OFFSET_DTYPE uint
 #endif
 
-#ifndef SHARED_ARRAYS_SIZE
-  #define SHARED_ARRAYS_SIZE 4096
-#endif
-
 #ifndef QMASK_DTYPE
   // must be extended to int if number of q-bins > 127
   #define QMASK_DTYPE char

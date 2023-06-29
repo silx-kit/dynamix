@@ -142,6 +142,9 @@ kernel void build_correlation_matrix_v2(
 Same as above, but threads are launched by groups, so that each frame is read at most n_frames / group_size times.
 Not working yet!
 **/
+#ifndef SHARED_ARRAYS_SIZE
+  #define SHARED_ARRAYS_SIZE 4096
+#endif
 kernel void build_correlation_matrix_v2b(
     const global DTYPE* data,
     const global uint* pixel_idx,

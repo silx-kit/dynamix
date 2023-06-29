@@ -212,8 +212,6 @@ class SpaceToTimeCompaction(OpenclProcessing):
         #
 
         self._space_compact_to_time_compact_stage1(d_data, d_pixel_indices, d_offsets, max_nnz_space)
-        # return parray.zeros(self.queue, 10, "f"), parray.zeros(self.queue, 10, "f"), parray.zeros(self.queue, 10, "f")
-        # return self._d_t_data_tmp, self._d_t_times_tmp, self._d_t_counter
         d_t_data, d_t_times, d_t_offsets = self._space_compact_to_time_compact_stage2()
 
         return d_t_data, d_t_times, d_t_offsets
