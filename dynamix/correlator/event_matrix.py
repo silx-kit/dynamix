@@ -6,9 +6,9 @@ import pyopencl.array as parray
 from ..utils import get_opencl_srcfile, updiv
 from .common import OpenclCorrelator
 
-class MatrixEventCorrelator(OpenclCorrelator):
+class SMatrixEventCorrelator(OpenclCorrelator):
 
-    kernel_files = ["matrix_evtcorrelator.cl"]
+    kernel_files = ["matrix_evtcorrelator.cl", "utils.cl"]
 
     """
     A class to compute the correlation function for sparse XPCS data.
@@ -26,11 +26,11 @@ class MatrixEventCorrelator(OpenclCorrelator):
             scale_factor=scale_factor, extra_options=extra_options,
             **oclprocessing_kwargs
         )
-        self._allocate_events_arrays(n_times)
+        self._init_corr_matrix(n_times)
         self._setup_kernels()
 
 
-    def _allocate_events_arrays(self, n_times):
+    def _init_corr_matrix(self, n_times):
         if n_times is None:
             n_times = self.nframes
         self.n_times = n_times
@@ -44,15 +44,13 @@ class MatrixEventCorrelator(OpenclCorrelator):
 
 
     def _setup_kernels(self):
-        self._max_nnz = 250 # TODO
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self.compile_kernels(
             kernel_files=kernel_files,
             compile_options=[
                 "-DDTYPE=%s" % self.c_dtype,
-                "-DMAX_EVT_COUNT=%d" % self._max_nnz,
                 "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
-                "-DSHARED_ARRAYS_SIZE=%d" % 11000,
+                "-DSHARED_ARRAYS_SIZE=%d" % 11000, # for build_correlation_matrix_v2b, not working
             ]
         )
         self.build_correlation_matrix_kernel_v1 = self.kernels.get_kernel("build_correlation_matrix_v1")
@@ -148,7 +146,6 @@ class MatrixEventCorrelator(OpenclCorrelator):
         return self.d_corr_matrix.get()
 
 
-
     def build_correlation_matrix_v2b(self, data, pixel_indices, offsets):
         qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
         d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8)) # !
@@ -184,19 +181,15 @@ class MatrixEventCorrelator(OpenclCorrelator):
         return self.d_corr_matrix.get()
 
 
-
-
-
-
     def build_correlation_matrix_v3(self, data, pixel_indices, offsets):
         qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
         d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8)) # !
 
         # TODO data setter
-        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
+        d_data = self.d_data = parray.to_device(self.queue, data.astype(self.dtype))
         d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
-        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
-        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype
+        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32)) # TODO more flexible
+        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype ?
         #
 
         max_nnz_space = np.diff(offsets).max()
@@ -221,6 +214,55 @@ class MatrixEventCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Build matrix correlation (v3)")
 
         return self.d_corr_matrix.get()
+
+    def get_timings(self):
+        if not(self.profile):
+            raise RuntimeError("Need to instantiate this class with profile=True")
+        evd = lambda e: (e.stop - e.start)/1e6
+        return {e.name: evd(e) for e in self.events}
+
+
+
+
+
+class TMatrixEventCorrelator(OpenclCorrelator):
+
+    kernel_files = ["matrix_evtcorrelator_time.cl", "utils.cl"]
+
+    """
+    A class to compute the correlation function for sparse XPCS data.
+    """
+
+    def __init__(
+        self, shape, nframes, n_times=None, max_t_nnz=250,
+        qmask=None, dtype="f", weights=None, scale_factor=None,
+        extra_options={}, **oclprocessing_kwargs
+    ):
+        """
+        """
+        super().__init__(
+            shape, nframes, qmask=qmask, dtype=dtype, weights=weights,
+            scale_factor=scale_factor, extra_options=extra_options,
+            **oclprocessing_kwargs
+        )
+        self._init_corr_matrix(n_times)
+        self._setup_kernels(max_t_nnz)
+
+    _init_corr_matrix = SMatrixEventCorrelator._init_corr_matrix
+    get_timings = SMatrixEventCorrelator.get_timings
+
+    def _setup_kernels(self, max_t_nnz):
+        self._max_nnz = max_t_nnz
+        kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
+        self.compile_kernels(
+            kernel_files=kernel_files,
+            compile_options=[
+                "-DDTYPE=%s" % self.c_dtype,
+                "-DMAX_EVT_COUNT=%d" % self._max_nnz,
+                "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
+            ]
+        )
+        self.build_correlation_matrix_kernel_times = self.kernels.get_kernel("build_correlation_matrix_times_representation")
 
 
     def build_correlation_matrix_times(self, data, times, offsets):
