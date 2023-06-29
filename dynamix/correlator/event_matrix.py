@@ -215,14 +215,6 @@ class SMatrixEventCorrelator(OpenclCorrelator):
 
         return self.d_corr_matrix.get()
 
-    def get_timings(self):
-        if not(self.profile):
-            raise RuntimeError("Need to instantiate this class with profile=True")
-        evd = lambda e: (e.stop - e.start)/1e6
-        return {e.name: evd(e) for e in self.events}
-
-
-
 
 
 class TMatrixEventCorrelator(OpenclCorrelator):
@@ -249,7 +241,6 @@ class TMatrixEventCorrelator(OpenclCorrelator):
         self._setup_kernels(max_t_nnz)
 
     _init_corr_matrix = SMatrixEventCorrelator._init_corr_matrix
-    get_timings = SMatrixEventCorrelator.get_timings
 
     def _setup_kernels(self, max_t_nnz):
         self._max_nnz = max_t_nnz

@@ -198,3 +198,12 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
     # kernels outside silx/opencl/resources
     def compile_kernels(self, kernel_files=None, compile_options=None):
         _compile_kernels(self, kernel_files=kernel_files, compile_options=compile_options)
+
+
+    def get_timings(self):
+        if not(self.profile):
+            raise RuntimeError("Need to instantiate this class with profile=True")
+        evd = lambda e: (e.stop - e.start)/1e6
+        return {e.name: evd(e) for e in self.events}
+
+
