@@ -12,6 +12,15 @@
     thread 1 reads frame 1, 2, .... N-1,
     thread 2 reads frame 2, 3, .... N-1
 
+  We could gain a ~2X speed-up by better balancing the work between threads, so that
+    thread 0 reads frames 0, ..., N//2
+    thread 1 reads frames 1, ..., N//2 + 1
+    ...
+    thread N//2 reads frames N//2, ..., N
+    thread N//2+1 reads frames N//2 + 1, ..., N, 0
+    ...
+    thread N-1 reads frame N-1, 0, 1, ..., N//2
+
   Parameters
   -----------
   data: array of 'total_nnz' elements, where 'total_nnz' is the total number of non-zero pixels in the XPCS data
@@ -248,6 +257,7 @@ It will look (through binary search) if this pixel index is found in the other f
 Each threads reads at most 1 + n_times/2 * log2(max_nnz)   elements,
   where max_nnz is the max length of a space-compacted vector (i.e the maximum number of non-zero items in frames)
 
+Here again, a ~2X speed-up could be obtain by better balancing the work (see notes in first kernel)
 **/
 kernel void build_correlation_matrix_v3(
     const global DTYPE* data,
@@ -274,7 +284,6 @@ kernel void build_correlation_matrix_v3(
 
     uint my_pix_idx = pixel_idx[i_start_0 + idx];
     RES_DTYPE d = (RES_DTYPE) data[i_start_0 + idx];
-
 
     // corr_matrix[i, i] = sum_in_bin(frame[i] * frame[i])
     size_t out_idx = get_index(n_times, frame_idx, frame_idx);
