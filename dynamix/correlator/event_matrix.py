@@ -39,8 +39,8 @@ class SMatrixEventCorrelator(OpenclCorrelator):
             print("Warning: incrementing n_times to have a proper-sized matrix")
             self.n_times += 1
         self.correlation_matrix_flat_size = self.nframes * (self.n_times + 1) // 2
-        # TODO dtype + q-bin selection if needed (to reduce array size)
-        self.d_corr_matrix = parray.zeros(self.queue, (self.n_bins, self.correlation_matrix_flat_size), np.uint32)
+        self.d_corr_matrix = parray.zeros(self.queue, (self.n_bins, self.correlation_matrix_flat_size), np.uint32) # TODO dtype ?
+        self.d_sums_corr_matrix = parray.zeros(self.queue, (self.n_bins, self.correlation_matrix_flat_size), np.float32)
 
 
     def _setup_kernels(self):
@@ -57,7 +57,7 @@ class SMatrixEventCorrelator(OpenclCorrelator):
         self.build_correlation_matrix_kernel_v2 = self.kernels.get_kernel("build_correlation_matrix_v2")
         self.build_correlation_matrix_kernel_v2b = self.kernels.get_kernel("build_correlation_matrix_v2b")
         self.build_correlation_matrix_kernel_v3 = self.kernels.get_kernel("build_correlation_matrix_v3")
-        self.build_correlation_matrix_kernel_times = self.kernels.get_kernel("build_correlation_matrix_times_representation")
+        self.build_scalar_correlation_matrix = self.kernels.get_kernel("build_flattened_scalar_correlation_matrix")
 
 
     def _get_compacted_qmask(self, pixel_indices, offsets):
@@ -208,6 +208,23 @@ class SMatrixEventCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Build matrix correlation (v3)")
 
         return self.d_corr_matrix.get()
+
+
+    def _correlate_sums(self):
+
+        wg = None
+        grid = (self.nframes, self.n_times, self.n_bins)
+        evt = self.build_scalar_correlation_matrix(
+            self.queue,
+            grid,
+            wg,
+            self.d_sums.data,
+            self.d_sums_corr_matrix.data,
+            np.int32(self.nframes),
+            np.int32(self.n_times),
+        )
+        evt.wait()
+        self.profile_add(evt, "Correlate d_sums")
 
 
 
