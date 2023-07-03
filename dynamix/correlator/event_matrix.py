@@ -184,7 +184,7 @@ class SMatrixEventCorrelator(OpenclCorrelator):
         d_data = self.d_data = parray.to_device(self.queue, data.astype(self.dtype))
         d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
         d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32)) # TODO more flexible
-        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype ?
+        self.d_sums = parray.zeros(self.queue, (self.n_bins, self.nframes), np.uint32) # TODO dtype ?
         #
 
         max_nnz_space = np.diff(offsets).max()
@@ -259,8 +259,7 @@ class TMatrixEventCorrelator(OpenclCorrelator):
         d_data = parray.to_device(self.queue, data)
         d_times = parray.to_device(self.queue, times)
         d_offsets = parray.to_device(self.queue, offsets)
-
-        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32) # TODO dtype
+        self.d_sums = parray.zeros(self.queue, (self.n_bins, self.nframes), np.uint32) # TODO dtype
         #
 
         self.d_corr_matrix.fill(0)
