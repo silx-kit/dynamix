@@ -307,17 +307,3 @@ kernel void build_correlation_matrix_v3(
     }
 }
 
-
-// launched with (n, n) grid
-kernel void build_flattened_scalar_correlation_matrix(
-    const global RES_DTYPE* arr,
-    global float* res,
-    int n
-) {
-    uint x = get_global_id(0);
-    uint y = get_global_id(1);
-    if ((x >= n) || (y > x)) return;
-    // res[y * n + x] = arr[x] * arr[y];
-    res[get_index(n, x, y)] = arr[x] * arr[y];
-}
-
