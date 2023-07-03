@@ -59,11 +59,6 @@ class SMatrixEventCorrelator(OpenclCorrelator):
         self.build_correlation_matrix_kernel_v3 = self.kernels.get_kernel("build_correlation_matrix_v3")
         self.build_correlation_matrix_kernel_times = self.kernels.get_kernel("build_correlation_matrix_times_representation")
 
-        # wg_size = 16 # Tune ?
-        # self.wg = (wg_size, 1) # None
-        # self.grid = [int(x) for x in [self.n_times , self.nframes]] # sanitize
-        # # self.grid[0] = updiv(updiv(self.n_times, wg_size), wg_size)*wg_size
-
 
     def _get_compacted_qmask(self, pixel_indices, offsets):
         # compaction of qmask (duplicates information!)
