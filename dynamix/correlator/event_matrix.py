@@ -203,7 +203,6 @@ class SMatrixEventCorrelator(OpenclCorrelator):
             self.d_sums.data,
             np.int32(self.nframes),
             np.int32(self.n_times),
-            np.int32(-1),
         )
         evt.wait()
         self.profile_add(evt, "Build matrix correlation (v3)")
