@@ -284,3 +284,24 @@ class TMatrixEventCorrelator(OpenclCorrelator):
 
         return self.d_corr_matrix.get()
 
+
+
+def flat_to_square(arr, shape=None, dtype=np.uint32):
+    """
+    Convert a flattened correlation "matrix" to a rectangular matrix.
+
+    Paramaters
+    ----------
+    arr: numpy.ndarray
+        1D array, flattened correlation matrix
+    shape: tuple of int, optional
+        Correlation matrix shape. If not given, resulting matrix is assumed square.
+    """
+    if shape is None:
+        n2 = arr.size
+        n = int(((1 + 8 * n2)**0.5 - 1) / 2)
+        shape = (n, n)
+    idx = np.triu_indices(shape[0], m=shape[1])
+    res = np.zeros(shape, dtype=dtype)
+    res[idx] = arr
+    return res
