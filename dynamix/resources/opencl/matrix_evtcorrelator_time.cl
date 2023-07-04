@@ -11,10 +11,10 @@ This seems to be much faster than space-based compaction, but the data has to be
 kernel void build_correlation_matrix_times_representation(
     const global uint* vol_times_array,
     const global DTYPE* vol_data_array,
-    const global uint* offsets,
-    const global int* q_mask,
+    const global OFFSET_DTYPE* offsets,
+    const global QMASK_DTYPE* q_mask,
     global RES_DTYPE* corr_matrix,
-    global uint* sums,
+    global RES_DTYPE* sums,
     int image_width,
     int image_height,
     int n_frames,

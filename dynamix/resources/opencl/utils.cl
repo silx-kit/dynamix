@@ -42,7 +42,7 @@ static inline uint binary_search(uint val, uint* arr, uint n) {
 
 // launched with (ntimes, nframes, qbins) grid
 kernel void build_flattened_scalar_correlation_matrix(
-    const global uint* arr,
+    const global RES_DTYPE* arr,
     global float* res,
     int n_frames,
     int n_times

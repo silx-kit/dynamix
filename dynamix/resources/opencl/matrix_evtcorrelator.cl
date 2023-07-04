@@ -263,13 +263,12 @@ kernel void build_correlation_matrix_v3(
     const global DTYPE* data,
     const global uint* pixel_idx,
     const global OFFSET_DTYPE* frame_offset,
-    const global char* qmask,
+    const global QMASK_DTYPE* qmask,
     global RES_DTYPE* corr_matrix,
     global RES_DTYPE* sums,
     int n_frames,
     int n_times
 ) {
-
     uint frame_idx = get_global_id(1);
     if (frame_idx  >= n_frames) return;
     uint idx = get_global_id(0);
