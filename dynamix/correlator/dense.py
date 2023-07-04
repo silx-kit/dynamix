@@ -199,12 +199,12 @@ class DenseCorrelator(OpenclCorrelator):
         self.d_sums = parray.zeros(
             self.queue,
             self.output_shape,
-            self.sums_dtype
+            self._sums_dtype
         )
         self.d_sums_f = parray.zeros(
             self.queue,
             self.output_shape,
-            self.output_dtype,
+            self._output_dtype,
         )
         self.d_output = parray.zeros(
             self.queue,
@@ -217,7 +217,7 @@ class DenseCorrelator(OpenclCorrelator):
             self.d_sums_f[:] *= self.scale_factors[0]
         else:
             for i, factor in enumerate(self.scale_factors.values()):
-                self.d_sums_f[i] /= np.array([factor], dtype=self.output_dtype)[0]
+                self.d_sums_f[i] /= np.array([factor], dtype=self._output_dtype)[0]
         self.d_sums_f.finish()
 
     def correlate(self, frames):
