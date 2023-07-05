@@ -141,15 +141,18 @@ class SpaceToTimeCompaction(OpenclProcessing):
         self.space_compact_to_time_compact_stage2_kernel = self.kernels.get_kernel(
             "space_compact_to_time_compact_stage2_sort"
         )
+        self._d_t_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
+        self._d_t_data_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), self.dtype)
+        self._d_t_times_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), np.uint32)
+
 
     def compile_kernels(self, kernel_files=None, compile_options=None):
         _compile_kernels(self, kernel_files=kernel_files, compile_options=compile_options)
 
+    def _space_compact_to_time_compact_stage1(self, data, pixel_indices, offsets, max_nnz_space, start_frame=0):
 
-    def _space_compact_to_time_compact_stage1(self, data, pixel_indices, offsets, max_nnz_space):
-        self._d_t_data_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), self.dtype)
-        self._d_t_times_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), np.uint32)
-        self._d_t_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
+        self._d_t_data_tmp.fill(0)
+        self._d_t_times_tmp.fill(0)
 
         n_frames = offsets.size - 1
 
@@ -169,6 +172,7 @@ class SpaceToTimeCompaction(OpenclProcessing):
             np.int32(self.shape[1]),
             np.int32(self.shape[0]),
             np.int32(n_frames),
+            np.int32(start_frame)
         )
         evt.wait()
         self.profile_add(evt, "space->time stage 1")
@@ -202,7 +206,7 @@ class SpaceToTimeCompaction(OpenclProcessing):
 
         return d_t_data, d_t_times, d_t_offsets
 
-    def space_compact_to_time_compact(self, data, pixel_indices, offsets):
+    def space_compact_to_time_compact(self, data, pixel_indices, offsets, start_frame=0):
         max_nnz_space = np.diff(offsets).max()
 
         # Might be good to have a more clever memory management
@@ -211,7 +215,121 @@ class SpaceToTimeCompaction(OpenclProcessing):
         d_offsets = parray.to_device(self.queue, offsets.astype(self.offset_dtype))
         #
 
-        self._space_compact_to_time_compact_stage1(d_data, d_pixel_indices, d_offsets, max_nnz_space)
+        self._space_compact_to_time_compact_stage1(d_data, d_pixel_indices, d_offsets, max_nnz_space, start_frame=start_frame)
         d_t_data, d_t_times, d_t_offsets = self._space_compact_to_time_compact_stage2()
 
         return d_t_data, d_t_times, d_t_offsets
+
+
+
+
+
+
+
+
+class SpaceToTimeCompactionV2(OpenclProcessing):
+
+
+    kernel_files = ["sparse.cl"]
+
+    def __init__(self, shape, dtype=np.uint8, offset_dtype=np.uint32, **oclprocessing_kwargs):
+        super().__init__(**oclprocessing_kwargs)
+        self.shape = shape
+        self.dtype = dtype
+        self.offset_dtype = offset_dtype
+        self._setup_kernels()
+
+    def _setup_kernels(self):
+        kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
+        self.compile_kernels(
+            kernel_files=kernel_files,
+            compile_options=[
+                "-DDTYPE=%s" % dtype_to_ctype(self.dtype),
+                "-DOFFSET_DTYPE=%s" % dtype_to_ctype(self.offset_dtype),
+                "-DMAX_EVT_COUNT=%d" % 10, # TODO
+                "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
+            ],
+        )
+        self.space_compact_to_time_compact_kernel = self.kernels.get_kernel("space_compact_to_time_compact_v2_stage1")
+        self.space_compact_to_time_compact_stage2_kernel = self.kernels.get_kernel(
+            "space_compact_to_time_compact_v2_stage2"
+            # "space_compact_to_time_compact_v2_stage2_sort"
+        )
+        self._d_t_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
+        # self._d_t_data_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), self.dtype)
+        # self._d_t_times_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), np.uint32)
+
+
+    def compile_kernels(self, kernel_files=None, compile_options=None):
+        _compile_kernels(self, kernel_files=kernel_files, compile_options=compile_options)
+
+    def _space_compact_to_time_compact_stage1(self, pixel_indices, offsets, max_nnz_space, start_frame=0):
+        n_frames = offsets.size - 1
+
+        wg = None
+        grid = (max_nnz_space, 1)  # round to something more friendly ?
+        evt = self.space_compact_to_time_compact_kernel(
+            self.queue,
+            grid,
+            wg,
+            pixel_indices.data,
+            offsets.data,
+            self._d_t_counter.data,
+            np.int32(self.shape[1]),
+            np.int32(self.shape[0]),
+            np.int32(n_frames),
+        )
+        evt.wait()
+        self.profile_add(evt, "space->time stage 1")
+
+    def _space_compact_to_time_compact_stage2(self, data, pixel_indices, offsets, n_frames, max_nnz_space):
+        # Could be made on device directly. But parray.cumsum() takes some time to compile.
+        t_counter = self._d_t_counter.get()
+        offsets1 = np.cumsum(t_counter, dtype=t_counter.dtype)
+        offsets1 = np.hstack([np.array([0], dtype=np.uint32), offsets1])
+        self._d_t_counter.fill(0)
+
+        d_t_offsets = parray.to_device(self.queue, offsets1)
+        d_t_offsets2 = d_t_offsets.copy();
+        d_t_data = parray.zeros(self.queue, offsets1[-1], self.dtype)
+        d_t_times = parray.zeros(self.queue, d_t_data.size, np.uint32)
+
+        wg = None
+        grid = (max_nnz_space, 1)
+
+        evt = self.space_compact_to_time_compact_stage2_kernel(
+            self.queue,
+            grid,
+            wg,
+            data.data,
+            pixel_indices.data,
+            offsets.data,
+            d_t_data.data,
+            d_t_times.data,
+            d_t_offsets2.data,
+            np.int32(n_frames)
+        )
+        evt.wait()
+        self.profile_add(evt, "space->time stage 2")
+
+        return d_t_data, d_t_times, d_t_offsets
+
+    def space_compact_to_time_compact(self, data, pixel_indices, offsets, start_frame=0):
+        max_nnz_space = np.diff(offsets).max()
+        n_frames = offsets.size - 1
+
+        # Might be good to have a more clever memory management
+        d_data = parray.to_device(self.queue, data.astype(self.dtype))
+        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
+        d_offsets = parray.to_device(self.queue, offsets.astype(self.offset_dtype))
+        #
+
+        self._space_compact_to_time_compact_stage1(d_pixel_indices, d_offsets, max_nnz_space, start_frame=start_frame)
+        d_t_data, d_t_times, d_t_offsets = self._space_compact_to_time_compact_stage2(d_data, d_pixel_indices, d_offsets, n_frames, max_nnz_space)
+
+        return d_t_data, d_t_times, d_t_offsets
+
+
+
+
+

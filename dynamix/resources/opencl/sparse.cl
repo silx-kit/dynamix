@@ -1,6 +1,6 @@
 #include "dtypes.h"
 
-// OK, but results may be un-sorted
+// OK, but results are not ordered
 kernel void space_compact_to_time_compact(
     const global DTYPE* data,
     const global uint* pixel_idx,
@@ -12,7 +12,8 @@ kernel void space_compact_to_time_compact(
 
     int Nx,
     int Ny,
-    int n_frames
+    int n_frames,
+    int starting_frame
 ) {
 
     uint idx = get_global_id(0);
@@ -151,4 +152,70 @@ kernel void space_compact_to_time_compact_stage2_sort(
         t_times[i] = l_times[i - start];
     }
 }
+
+
+
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+
+kernel void space_compact_to_time_compact_v2_stage1(
+    const global uint* pixel_idx,
+    const global OFFSET_DTYPE* frame_offset,
+
+    global uint* counters,
+
+    int Nx,
+    int Ny,
+    int n_frames
+) {
+
+    uint idx = get_global_id(0);
+
+    uint start, stop;
+    size_t img_pix_idx, vol_pix_idx;
+    uint j = 0;
+    for (uint i = 0; i < n_frames; i++) {
+        start = frame_offset[i];
+        stop = frame_offset[i+1];
+        if (start + idx < stop) {
+            img_pix_idx = pixel_idx[start + idx];
+            atomic_inc(counters + img_pix_idx);
+        }
+    }
+}
+
+
+// unordered results
+kernel void space_compact_to_time_compact_v2_stage2(
+    const global DTYPE* data,
+    const global uint* pixel_idx,
+    const global OFFSET_DTYPE* frame_offset,
+
+    global DTYPE* t_data,
+    global uint* t_times,
+    global uint* t_offsets,
+
+    int n_frames
+) {
+
+    uint idx = get_global_id(0);
+
+    uint start, stop;
+    size_t img_pix_idx, t_idx;
+    uint j = 0;
+    for (uint i = 0; i < n_frames; i++) {
+        start = frame_offset[i];
+        stop = frame_offset[i+1];
+        if (start + idx < stop) {
+            img_pix_idx = pixel_idx[start + idx];
+
+            j = atomic_inc(t_offsets + img_pix_idx);
+            t_data[j] = data[start + idx];
+            t_times[j] = i;
+        }
+        barrier(CLK_GLOBAL_MEM_FENCE);
+    }
+}
+
 
