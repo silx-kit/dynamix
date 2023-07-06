@@ -18,7 +18,8 @@ kernel void build_correlation_matrix_times_representation(
     int image_width,
     int image_height,
     int n_frames,
-    int n_times
+    int n_times,
+    int pre_sort
 ) {
     uint x = get_global_id(0);
     uint y = get_global_id(1);
@@ -42,9 +43,30 @@ kernel void build_correlation_matrix_times_representation(
         data[i] = vol_data[i];
     }
 
+
+    // If time-compacted data is unordered, it has to be sorted here
+    if (pre_sort) {
+        int i = 1, j;
+        while (i < n_events) {
+            j = i;
+            while (j > 0 && times[j-1] > times[j]) {
+                uint tmp = times[j];
+                times[j] = times[j-1];
+                times[j-1] = tmp;
+
+                DTYPE tmp2 = data[j];
+                data[j] = data[j-1];
+                data[j-1] = tmp2;
+                j--;
+            }
+            i++;
+        }
+    }
+    // ---
+
     size_t cor_matrix_flat_size = (n_frames * (n_times + 1)) / 2;
 
-    global uint* my_sums = sums + bin_idx * n_frames;
+    global RES_DTYPE* my_sums = sums + bin_idx * n_frames;
     for (int i_tau = 0; i_tau < n_events; i_tau++) {
         atomic_add(my_sums + times[i_tau], data[i_tau]);
         for (int i_t = i_tau; i_t < n_events; i_t++) {
