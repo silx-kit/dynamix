@@ -59,6 +59,23 @@ def dense_to_space(xpcs_frames):
     return np.hstack(data), np.hstack(pixel_idx), np.cumsum(offset)
 
 
+def concatenate_space_compacted_data(*sparse_data):
+    if not (isinstance(sparse_data[0], (list, tuple))) or any([len(s) != 3 for s in sparse_data]):
+        raise ValueError(
+            "Must be used as: concatenate_space_compacted_data((data1, pix_idx1, offset1), (data2, pix_idx2, offset2), ...)"
+        )
+    res_data = np.concatenate([s[0] for s in sparse_data])
+    res_pix_idx = np.concatenate([s[1] for s in sparse_data])
+    offsets = [s[2][1:].copy() for s in sparse_data]
+    # res_offsets = np.zeros(sum([o.size for o in offsets]), dtype=offsets[0].dtype)
+    # res_offsets[:offsets[0].size] = offsets[0][:]
+    for i in range(1, len(offsets)):
+        offsets[i] += offsets[i - 1][-1]
+    res_offsets = np.concatenate(offsets)
+    res_offsets = np.hstack([[0], res_offsets])
+    return res_data, res_pix_idx, res_offsets
+
+
 def space_to_dense(data, pix_idx, offset, frame_shape):
     n_frames = len(offset) - 1
     xpcs_data = np.zeros((n_frames,) + frame_shape, dtype=data.dtype)
