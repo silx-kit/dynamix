@@ -335,9 +335,9 @@ class TMatrixEventCorrelator(MatrixEventCorrelator):
         if check:
             self._check_arrays(data, times, offsets)
 
-        d_data = self.set_array("data", data)
-        d_times = self.set_array("times", times)
-        d_offsets = self.set_array("offsets", offsets)
+        d_data = self.set_array("t_data", data)
+        d_times = self.set_array("t_times", times)
+        d_offsets = self.set_array("t_offsets", offsets)
 
         self.d_corr_matrix.fill(0)
         self.d_sums.fill(0)
