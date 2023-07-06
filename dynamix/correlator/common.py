@@ -33,12 +33,30 @@ class BaseCorrelator:
         self.weights = None
         self.scale_factors = None
 
-    def _set_parameters(self, shape, nframes, qmask, scale_factor, extra_options):
+
+    def _set_dtype(self, dtype):
+        # Configure data types - important for OpenCL kernels,
+        # as some operations are better performed on integer types (ex. atomic),
+        # but some overflow can occur for large/non-sparse data.
+
+        # data type for data. Usually the data values lie in a small range (less than 255)
+        self.dtype = dtype
+        # Other data types
+        self._offset_dtype = self.extra_options["offset_dtype"]
+        self._qmask_dtype = self.extra_options["qmask_dtype"]
+        self._res_dtype = self.extra_options["res_dtype"]
+        self._sums_dtype = self.extra_options["sums_dtype"]
+        self._pix_idx_dtype = np.uint32 # won't change (goes from 0 to N_x*N_y)
+        self._output_dtype = np.float32 # won't change
+
+
+    def _set_parameters(self, shape, nframes, qmask, scale_factor, extra_options, dtype):
+        self._configure_extra_options(extra_options)
+        self._set_dtype(dtype)
         self.nframes = nframes
         self._set_shape(shape)
         self._set_qmask(qmask=qmask)
         self._set_scale_factor(scale_factor=scale_factor)
-        self._configure_extra_options(extra_options)
 
     def _set_shape(self, shape):
         if np.isscalar(shape):
@@ -50,13 +68,13 @@ class BaseCorrelator:
     def _set_qmask(self, qmask=None):
         self.qmask = None
         if qmask is None:
-            self.bins = np.array([1], dtype=np.int32)
+            self.bins = np.array([1], dtype=self._qmask_dtype)
             self.n_bins = 1
-            self.qmask = np.ones(self.shape, dtype=np.int32)
+            self.qmask = np.ones(self.shape, dtype=self._qmask_dtype)
         else:
-            self.qmask = np.ascontiguousarray(qmask, dtype=np.int32)
+            self.qmask = np.ascontiguousarray(qmask, dtype=self._qmask_dtype)
             self.n_bins = self.qmask.max()
-            self.bins = np.arange(1, self.n_bins + 1, dtype=np.int32)
+            self.bins = np.arange(1, self.n_bins + 1, dtype=self._qmask_dtype)
         self.output_shape = (self.n_bins, self.nframes)
 
     def _set_weights(self, weights=None):
@@ -163,31 +181,16 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         self._allocate_memory()
 
     def _set_parameters(self, shape, nframes, dtype, qmask, weights, scale_factor, extra_options):
-        BaseCorrelator._set_parameters(self, shape, nframes, qmask, scale_factor, extra_options)
-        self._set_dtype(dtype)
+        BaseCorrelator._set_parameters(self, shape, nframes, qmask, scale_factor, extra_options, dtype)
+        self._set_cl_dtypes()
         self._set_weights(weights)
         self.is_cpu = (self.device.type == "CPU")
         self.extra_options = self.default_extra_options.copy().update((extra_options or {}))
 
-    def _set_dtype(self, dtype):
-        # Configure data types - important for OpenCL kernels,
-        # as some operations are better performed on integer types (ex. atomic),
-        # but some overflow can occur for large/non-sparse data.
-
-        # data type for data. Usually the data values lie in a small range (less than 255)
-        self.dtype = dtype
-        # Other data types
-        self._offset_dtype = self.extra_options["offset_dtype"]
-        self._qmask_dtype = self.extra_options["qmask_dtype"]
-        self._res_dtype = self.extra_options["res_dtype"]
-        self._sums_dtype = self.extra_options["sums_dtype"]
-        self._pix_idx_dtype = np.uint32 # won't change (goes from 0 to N_x*N_y)
-        self._output_dtype = np.float32 # won't change
-
+    def _set_cl_dtypes(self):
         self.c_dtype = dtype_to_ctype(self.dtype)
         self.c_sums_dtype = dtype_to_ctype(self._sums_dtype)
         self.idx_c_dtype = "int"  # TODO custom ?
-
         self._dtype_compilation_flags = [
             "-DDTYPE=%s" % (dtype_to_ctype(self.dtype)),
             "-DOFFSET_DTYPE=%s" % (dtype_to_ctype(self._offset_dtype)),
