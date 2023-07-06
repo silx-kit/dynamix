@@ -67,13 +67,25 @@ def concatenate_space_compacted_data(*sparse_data):
     res_data = np.concatenate([s[0] for s in sparse_data])
     res_pix_idx = np.concatenate([s[1] for s in sparse_data])
     offsets = [s[2][1:].copy() for s in sparse_data]
-    # res_offsets = np.zeros(sum([o.size for o in offsets]), dtype=offsets[0].dtype)
-    # res_offsets[:offsets[0].size] = offsets[0][:]
     for i in range(1, len(offsets)):
         offsets[i] += offsets[i - 1][-1]
     res_offsets = np.concatenate(offsets)
     res_offsets = np.hstack([[0], res_offsets])
     return res_data, res_pix_idx, res_offsets
+
+
+def dense_to_space_multi(xpcs_frames, n_threads=16):
+    n_frames = xpcs_frames.shape[0]
+    chunk_size = ceil(n_frames / n_threads)
+    results = [None] * n_threads
+
+    def compact_frames(i):
+        results[i] = dense_to_space(xpcs_frames[i * (chunk_size) : (i + 1) * chunk_size])
+
+    with ThreadPool(n_threads) as tp:
+        tp.map(compact_frames, range(n_threads))
+
+    return concatenate_space_compacted_data(*results)
 
 
 def space_to_dense(data, pix_idx, offset, frame_shape):
