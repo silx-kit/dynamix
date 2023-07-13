@@ -376,15 +376,17 @@ def main():
 
     elif correlator == "intensity":
         ##### intensity #################################
-        from dynamix.correlator.dense import MatMulCorrelator
-        from dynamix.correlator.cuda import CublasMatMulCorrelator
+        if engine == 'CPU':
+            from dynamix.correlator.dense import MatMulCorrelator
+        if engine == 'GPU':
+            from dynamix.correlator.cuda import CublasMatMulCorrelator
 
         ##### read data ##########################################
         if sufd.find("edf") > -1:#== ".edf":
             data = readdata.get_data(sample_dir,prefd,sufd,nf1,nf2)
         elif sufd == ".h5":
             #data = h5reader.myreader(sample_dir+prefd+sufd,nf1,nf2)
-            data = h5reader.myreader(sample_dir+prefd+sufd,detector,nf1,nf2,scan)
+            data = h5reader.myreader(sample_dir+prefd+sufd,detector,nf1,nf2,scan,skip)
             #data = np.array(data,np.uint16)
             
         else:
