@@ -12,7 +12,7 @@ import os
 os.environ["HDF5_USE_FILE_LOCKING"] = "FALSE"
 
 
-def myreader(fileName,detector,nf1,nf2,scan="none"):
+def myreader(fileName,detector,nf1,nf2,scan="none",skip=1):
     """ Read a NeXus HDF5 file using h5py and numpy
 
     :param fileName: str name of the h5 file
@@ -20,7 +20,8 @@ def myreader(fileName,detector,nf1,nf2,scan="none"):
     :param nf1: int first frame number
     :param nf2: int last frame number
     :param scan: str scan number 
-
+    :param skip: int use every skip_th frame 
+    
     :return: data 3D array of all frames 
     """
     
@@ -58,10 +59,13 @@ def myreader(fileName,detector,nf1,nf2,scan="none"):
         except:
             fdata = f['/entry_0000/measurement/data']
     fshape = fdata.shape       
-    data = numpy.zeros((nf2-nf1,fshape[1],fshape[2]),fdata.dtype)
+    #n_frames = int((nf2-nf1)/skip)
+    n_frames = numpy.arange(nf1,nf2,skip).size
+    print("Number of frames %d" % n_frames)
+    data = numpy.zeros((n_frames,fshape[1],fshape[2]),fdata.dtype)
     print("Data shape", data.shape)
     n = 0
-    for i in range(nf1,nf2,1):
+    for i in range(nf1,nf2,skip):
         data[n,:,:] = numpy.array(fdata[i,:,:],fdata.dtype)
         n += 1
 
@@ -96,7 +100,8 @@ def p10_eiger4m_event_GPU_datan(fileName,detector,nf1,nf2,mask,scan,thr=20,frc=0
     print("Read a P10 HDF5 file")
     data = f['/entry/data']
     n_frames, nx, ny = data[list(f['/entry/data'].keys())[0]].shape
-    n_frames = int((nf2-nf1)/skip)
+    #n_frames = int((nf2-nf1)/skip)
+    n_frames = np.arange(nf1,nf2,skip).size
     print("Number of frames %d" % n_frames)
     print("Data size in MB %d" % (n_frames*nx*ny*4/1024**2))
     ll = nx*ny # total number of pixels
@@ -241,7 +246,8 @@ def id10_eiger4m_event_GPU_datan(fileName,detector,nf1,nf2,mask,scan,thr=20,frc=
     print("Read a ID10 HDF5 file")
     data = f['/'+scan+'.1/measurement/'+detector]
     n_frames, nx, ny = data.shape
-    n_frames = int((nf2-nf1)/skip)
+    n_frames = np.arange(nf1,nf2,skip).size
+    #n_frames = int((nf2-nf1)/skip)
     print("Number of frames %d" % n_frames)
     print("Data size in MB %d" % (n_frames*nx*ny*4/1024**2))
     ll = nx*ny # total number of pixels
