@@ -79,8 +79,9 @@ def show_trc(cor,sname='',savdir="./",toplot="no"):
     else:
         cor = gaussian_filter(cor,3)
     vvmax = np.diag(cor,k=4)
-    vvmax = np.mean(vvmax[np.where((vvmax>0.5)&(vvmax<1.5))])
-    plt.imshow(cor,vmin=1,vmax=max(vvmax,1.01),origin="lower",interpolation='nearest')
+    #vvmax = np.mean(vvmax[np.where((vvmax>0.5)&(vvmax<1.5))])
+    plt.imshow(cor,origin="lower",interpolation='nearest')
+    #plt.imshow(cor,vmin=1,vmax=max(vvmax,1.01),origin="lower",interpolation='nearest')
     #plt.imshow(cor,vmax=max(vvmax,1.01),origin="lower",interpolation='nearest')
     plt.colorbar()
     plt.title(sname)
