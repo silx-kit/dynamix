@@ -356,7 +356,7 @@ class TMatrixEventCorrelator(MatrixEventCorrelator):
             np.int32(self.shape[0]),
             np.int32(self.nframes),
             np.int32(self.n_times),
-            np.int32(0),
+            np.int32(1), # pre-sort
         )
         evt.wait()
         self.profile_add(evt, "Build matrix correlation (times repr.)")
