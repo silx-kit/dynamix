@@ -253,6 +253,9 @@ class SpaceToTimeCompaction(OpenclProcessing):
 
 
 class SpaceToTimeCompactionV2(OpenclProcessing):
+    """
+    Alternate implementation requiring much less memory, but the output results are not sorted
+    """
     kernel_files = ["sparse.cl"]
 
     def __init__(self, shape, dtype=np.uint8, offset_dtype=np.uint32, **oclprocessing_kwargs):
@@ -269,7 +272,7 @@ class SpaceToTimeCompactionV2(OpenclProcessing):
             compile_options=[
                 "-DDTYPE=%s" % dtype_to_ctype(self.dtype),
                 "-DOFFSET_DTYPE=%s" % dtype_to_ctype(self.offset_dtype),
-                "-DMAX_EVT_COUNT=%d" % 10,  # TODO
+                "-DMAX_EVT_COUNT=%d" % 10,  # Not used here
                 "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
             ],
         )
