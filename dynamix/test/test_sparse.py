@@ -9,6 +9,7 @@ from dynamix.sparse import (
     times_to_dense,
     space_to_times,
     SpaceToTimeCompaction,
+    SpaceToTimeCompactionV2,
     estimate_max_events_in_times_from_space_compacted_data,
 )
 
@@ -91,6 +92,20 @@ class TestSparseFormats(unittest.TestCase):
         self.compare_int_volumes(d_t_offsets.get(), t_offsets)
 
 
+    def test_from_space_to_times_opencl_v2(self):
+        data, pix_idx, offset = dense_to_space(self.xpcs_frames)
+
+        space_to_time_ocl = SpaceToTimeCompactionV2(
+            self.frame_shape, dtype=self.xpcs_frames.dtype
+        )
+
+        d_t_data, d_t_times, d_t_offsets = space_to_time_ocl.space_compact_to_time_compact(data, pix_idx, offset)
+
+        # SpaceToTimeCompactionV2 does not sort the results. It does not matter when computing the correlation function,
+        # but the results cannot be compared directly to the output of dense_to_times().
+        # Instead we make sure that the re-densified data is valid.
+        data_dense = times_to_dense(d_t_data.get(), d_t_times.get(), d_t_offsets.get(), self.n_frames, self.frame_shape)
+        self.compare_int_volumes(self.xpcs_frames, data_dense)
 
 
 

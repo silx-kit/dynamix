@@ -276,7 +276,6 @@ class SpaceToTimeCompactionV2(OpenclProcessing):
         self.space_compact_to_time_compact_kernel = self.kernels.get_kernel("space_compact_to_time_compact_v2_stage1")
         self.space_compact_to_time_compact_stage2_kernel = self.kernels.get_kernel(
             "space_compact_to_time_compact_v2_stage2"
-            # "space_compact_to_time_compact_v2_stage2_sort"
         )
         self._d_t_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
         # self._d_t_data_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), self.dtype)
