@@ -55,9 +55,9 @@ class MatrixEventCorrelator(OpenclCorrelator):
 
     def _check_arrays(self, data, pixel_indices, offsets):
         if data.dtype != self.dtype:
-            raise ValueError("Expected dtype %s for offsets, but got %s" % (self.dtype, data.dtype))
+            raise ValueError("Expected dtype %s for data, but got %s" % (self.dtype, data.dtype))
         if pixel_indices.dtype != self._pix_idx_dtype:
-            raise ValueError("Expected dtype %s for offsets, but got %s" % (self._pix_idx_dtype, pixel_indices.dtype))
+            raise ValueError("Expected dtype %s for pixel_indices, but got %s" % (self._pix_idx_dtype, pixel_indices.dtype))
         if offsets.dtype != self._offset_dtype:
             raise ValueError("Expected dtype %s for offsets, but got %s" % (self._offset_dtype, offsets.dtype))
 
