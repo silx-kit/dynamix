@@ -11,7 +11,11 @@
   x: column index
   y : row index
 */
-static inline size_t get_index(uint W, uint x, uint y) {
+static inline size_t get_index(uint W0, uint x0, uint y0) {
+    // return (size_t) (W * y) - (size_t) (y*(y-1)/2) + x - y;
+    size_t W = (size_t) W0;
+    size_t x = (size_t) x0;
+    size_t y = (size_t) y0;
     return (size_t) (W * y) - (size_t) (y*(y-1)/2) + x - y;
 }
 
