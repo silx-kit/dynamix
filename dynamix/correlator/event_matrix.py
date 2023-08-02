@@ -1,4 +1,5 @@
 from os import path
+from math import sqrt
 from time import perf_counter
 import numpy as np
 from pyopencl import LocalMemory
@@ -327,6 +328,7 @@ class TMatrixEventCorrelator(MatrixEventCorrelator):
         self.build_correlation_matrix_kernel_times = self.kernels.get_kernel(
             "build_correlation_matrix_times_representation"
         )
+        self.build_scalar_correlation_matrix = self.kernels.get_kernel("build_flattened_scalar_correlation_matrix")
 
     def build_correlation_matrix(self, data, times, offsets, check=True):
         wg = None
@@ -362,6 +364,34 @@ class TMatrixEventCorrelator(MatrixEventCorrelator):
         self.profile_add(evt, "Build matrix correlation (times repr.)")
 
         return self.d_corr_matrix
+
+
+    # TODO factorize
+    def compute_final_twotimes_function(self, bin_idx=0, calc_std=False, dtype=np.float64):
+        num = self.d_corr_matrix[bin_idx].get()
+        num = flat_to_square(num, shape=(self.nframes, self.n_times), dtype=dtype)
+
+        denom = self.d_sums_corr_matrix[bin_idx].get()
+        denom = flat_to_square(denom, shape=(self.nframes, self.n_times), dtype=dtype)
+
+        res = np.zeros(self.n_times, dtype=dtype)
+        if calc_std:
+            dev = np.zeros_like(res)
+
+        for i in range(self.n_times):
+            dia_n = np.diag(num, k=i)
+            dia_d = np.diag(denom, k=i)
+            res[i] = np.sum(dia_n) / np.sum(dia_d)
+            if calc_std:
+                dev[i] = np.std(dia_n / dia_d) / sqrt(len(dia_d))
+        res *= self.scale_factors[bin_idx + 1]
+        if calc_std:
+            return (res, dev, num, denom)
+        else:
+            return res, num, denom
+
+
+
 
 
 def flat_to_square(arr, shape=None, dtype=np.uint32):
