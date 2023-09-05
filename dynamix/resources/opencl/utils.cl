@@ -20,6 +20,14 @@ static inline size_t get_index(uint W0, uint x0, uint y0) {
 }
 
 /*
+    Compute ceil(a/b) where a and b are integers
+*/
+static inline uint updiv(uint a, uint b) {
+    return (a + (b - 1)) / b;
+}
+
+
+/*
   Binary search in an array of (unsigned) integers.
 
   Parameters
@@ -61,4 +69,111 @@ kernel void build_flattened_scalar_correlation_matrix(
     idx += ((n_frames * (n_times + 1)) / 2) * qbin_idx;
     res[idx] = arr[x] * arr[y];
 }
+
+
+
+
+
+
+
+/*
+    Reduction function used in compute_final_reductions().
+    It uses four items:
+      - s0 is the accumulator for sum(diag_numerator)
+      - s1 is the accumulator for sum(diag_denominator)
+      - s2 is the accumulator for sum(diag_numerator/diag_denominator)
+      - s3 is the accumulator for sum((diag_numerator/diag_denominator)**2)
+*/
+
+/*
+static inline double4 reduce_diagonal_elements(double4* a, double4* b) {
+    return (double4) (a.s0 + b.s0, a.s1 + b.s1, );
+
+}
+*/
+
+
+
+
+/*
+    Launched with (WORKGROUP_SIZE, n_times, n_bins) threads.
+    Each group of thread handles exactly one diagonal,
+    i.e workgroup 0 handles diag(k=0), workgroup 1 handles diag(k=1), and so on.
+    This means that workgroup 0 has the most work.
+
+    Matrices "numerator" and "denominator" are in compacted form,
+    i.e half the elements are stored. See the function get_index() for more details
+    on how the data is stored within.
+    This means that they are not accessed with the easy cartesian pattern.
+
+*/
+
+/*
+kernel void compute_final_reductions(
+    const global RES_DTYPE* numerator,
+    const global RES_DTYPE* denominator,
+    local double2* diagonal_elements,
+    int n_frames,
+    int n_times,
+    int n_bins
+) {
+    uint i = get_global_id(0);
+    uint k = get_global_id(1);
+    uint qbin_idx = get_global_id(2);
+    uint workgroup_size = get_local_size(0);
+    uint lid = get_local_id(0); // lid == i for this kernel
+    if (i >= workgroup_size || k >= n_times || qbin_idx >= n_bins) return;
+
+    // Number of elements in diagonal k = matrix width - k = n_times - k
+    uint n = n_times - k;
+    uint n_reduction_steps = updiv(n, workgroup_size);
+
+
+
+
+    for (uint r = 0; r < n_reduction_steps; r++) {
+
+        // processing diag(k)[r*workgroup_size:(r+1)*workgroup_size]
+        // TODO: fetch diag(k) into diagonal_elements[]
+
+        // Parallel reduction: sum of diag(numerator, k), sum of diag(denominator, k), sum(numerator/denominator, k)
+        for (uint block=workgroup_size/2; block > 1; block /= 2) {
+            if ((lid < block) && ((lid + block) < workgroup_size)) {
+                diagonal_elements[lid] = REDUCE(diagonal_elements[lid], diagonal_elements[lid + block]);
+            }
+            barrier(CLK_LOCAL_MEM_FENCE);
+        }
+        if (lid == 0){
+            if (workgroup_size > 1) {
+                acc = REDUCE(diagonal_elements[0], diagonal_elements[1]);
+            }
+            else {
+                acc = diagonal_elements[0];
+            }
+            out[get_group_id(0)] = acc;
+        }
+
+
+    }
+}
+
+*/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
