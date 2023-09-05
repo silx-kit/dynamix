@@ -146,7 +146,7 @@ def estimate_max_events_in_times_from_space_compacted_data(pix_idx, offsets, est
 from os import path
 
 
-class SpaceToTimeCompaction(OpenclProcessing):
+class SpaceToTimeCompactionV1(OpenclProcessing):
     kernel_files = ["sparse.cl"]
 
     def __init__(self, shape, max_time_nnz=250, dtype=np.uint8, offset_dtype=np.uint32, **oclprocessing_kwargs):
@@ -361,3 +361,7 @@ class SpaceToTimeCompactionV2(OpenclProcessing):
             raise RuntimeError("Need to instantiate this class with profile=True")
         evd = lambda e: (e.stop - e.start)/1e6
         return {e.name: evd(e) for e in self.events}
+
+
+# Alias
+SpaceToTimeCompaction = SpaceToTimeCompactionV2
