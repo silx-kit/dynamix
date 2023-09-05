@@ -354,3 +354,10 @@ class SpaceToTimeCompactionV2(OpenclProcessing):
         )
 
         return d_t_data, d_t_times, d_t_offsets
+
+
+    def get_timings(self):
+        if not(self.profile):
+            raise RuntimeError("Need to instantiate this class with profile=True")
+        evd = lambda e: (e.stop - e.start)/1e6
+        return {e.name: evd(e) for e in self.events}
