@@ -47,16 +47,18 @@ static inline uint binary_search(uint val, uint* arr, uint n) {
 // launched with (ntimes, nframes, qbins) grid
 kernel void build_flattened_scalar_correlation_matrix(
     const global RES_DTYPE* arr,
-    global uint* res,
+    global RES_DTYPE* res,
     int n_frames,
-    int n_times
+    int n_times,
+    int n_bins
 ) {
     uint x = get_global_id(0);
     uint y = get_global_id(1);
     uint qbin_idx = get_global_id(2);
-    if ((x >= n_times) || (n_times * y > n_frames * x)) return;
+    if ((x >= n_times) || (n_times * y > n_frames * x) || (qbin_idx >= n_bins)) return;
     // res[y * n + x] = arr[x] * arr[y];
     size_t idx = get_index(n_times, x, y);
     idx += ((n_frames * (n_times + 1)) / 2) * qbin_idx;
     res[idx] = arr[x] * arr[y];
 }
+
