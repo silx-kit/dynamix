@@ -73,7 +73,7 @@ class MatrixEventCorrelator(OpenclCorrelator):
             self.d_sums_corr_matrix.data,
             np.int32(self.nframes),
             np.int32(self.n_times),
-            np.int32(n_bins)
+            np.int32(self.n_bins)
         )
         evt.wait()
         self.profile_add(evt, "Correlate d_sums")
