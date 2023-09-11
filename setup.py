@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
 from setuptools import setup
-from numpy.distutils.core import Extension
+from numpy.distutils.core import setup
+from numpy.distutils.extension import Extension
 import os
 
 def get_version():
