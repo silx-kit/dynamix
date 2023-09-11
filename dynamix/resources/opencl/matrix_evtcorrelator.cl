@@ -21,7 +21,7 @@ Each threads reads at most 1 + n_times/2 * log2(max_nnz)   elements,
 
 Here again, a ~2X speed-up could be obtain by better balancing the work (see notes in first kernel)
 **/
-kernel void build_correlation_matrix_v3(
+kernel void build_correlation_matrix(
     const global DTYPE* data,
     const global uint* pixel_idx,
     const global OFFSET_DTYPE* frame_offset,

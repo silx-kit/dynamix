@@ -281,8 +281,6 @@ class SpaceToTimeCompactionV2(OpenclProcessing):
             "space_compact_to_time_compact_v2_stage2"
         )
         self._d_t_counter = parray.zeros(self.queue, np.prod(self.shape), np.uint32)
-        # self._d_t_data_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), self.dtype)
-        # self._d_t_times_tmp = parray.zeros(self.queue, self.max_time_nnz * np.prod(self.shape), np.uint32)
 
     def compile_kernels(self, kernel_files=None, compile_options=None):
         _compile_kernels(self, kernel_files=kernel_files, compile_options=compile_options)
