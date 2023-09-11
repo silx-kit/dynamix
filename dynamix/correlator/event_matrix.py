@@ -8,10 +8,10 @@ from ..utils import get_opencl_srcfile, updiv
 from .common import OpenclCorrelator
 
 
-class MatrixEventCorrelator(OpenclCorrelator):
+class MatrixEventCorrelatorBase(OpenclCorrelator):
 
     """
-    A class to compute the correlation function for sparse XPCS data.
+    Base class for MatrixEventCorrelator
     """
 
     def __init__(
@@ -79,8 +79,12 @@ class MatrixEventCorrelator(OpenclCorrelator):
         self.profile_add(evt, "Correlate d_sums")
 
 
-class SMatrixEventCorrelator(MatrixEventCorrelator):
+class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
     kernel_files = ["matrix_evtcorrelator.cl", "utils.cl"]
+
+    """
+    A class for computing the two-times correlation function (TTCF) from space-compacted data.
+    """
 
     def __init__(
         self,
@@ -286,7 +290,7 @@ class SMatrixEventCorrelator(MatrixEventCorrelator):
     build_correlation_matrix = _build_correlation_matrix_v3
 
 
-class TMatrixEventCorrelator(MatrixEventCorrelator):
+class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
     kernel_files = ["matrix_evtcorrelator_time.cl", "utils.cl"]
 
     def __init__(
