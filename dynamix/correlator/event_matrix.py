@@ -79,6 +79,56 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
         self.profile_add(evt, "Correlate d_sums")
 
 
+    def compute_normalized_ttcf(self, bin_idx, num=None, denom=None, n_threads=1, calc_std=False, dtype=np.float64):
+        """
+        Compute the two-time correlation function, on GPU.
+        It's quite slow, especially when "num" and "denom" are not provided, but it can be useful when memory is a limitation on GPU.
+
+        Parameters
+        ----------
+        bin_idx: integer
+            Index of the bin to compute. Starts with 0!
+        num: numpy.ndarray, optional
+            Numerator: xpcs.dot(xpcs.T)
+        denom: numpy.ndarray, optional
+            Denominator: s.dot(s.T) where s = xpcs.sum(axis=-1).reshape((-1, 1))
+        n_threads: int, optional
+            Number of threads to compute the final step
+        calc_std: bool, optional
+            Whether to also compute standard deviation. Default is False.
+        dtype: numpy.dtype, optional
+            Data type for performing the final computation. Default is float64
+        """
+        if num is None:
+            num = self.d_corr_matrix[bin_idx].get()
+            num = flat_to_square(num, shape=(self.nframes, self.n_times), dtype=dtype)
+
+        if denom is None:
+            denom = self.d_sums_corr_matrix[bin_idx].get()
+            denom = flat_to_square(denom, shape=(self.nframes, self.n_times), dtype=dtype)
+
+        res = np.zeros(self.n_times, dtype=dtype)
+        if calc_std:
+            dev = np.zeros_like(res)
+
+        def _compute_diag(i):
+            dia_n = np.diag(num, k=i)
+            dia_d = np.diag(denom, k=i)
+            res[i] = np.sum(dia_n) / np.sum(dia_d)
+            if calc_std:
+                dev[i] = np.std(dia_n / dia_d) / sqrt(len(dia_d))
+
+        with ThreadPool(n_threads) as tp:
+            tp.map(_compute_diag, range(self.n_times))
+
+        res *= self.scale_factors[bin_idx + 1]
+        if calc_std:
+            return (res, dev, num, denom)
+        else:
+            return res, num, denom
+
+
+
 class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
     kernel_files = ["matrix_evtcorrelator.cl", "utils.cl"]
 
@@ -369,59 +419,6 @@ class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
         self.profile_add(evt, "Build matrix correlation (times repr.)")
 
         return self.d_corr_matrix
-
-
-    # TODO factorize in parent class
-    def compute_final_twotimes_function_cpu(self, bin_idx, num=None, denom=None, n_threads=1, calc_std=False, dtype=np.float64):
-        """
-        Compute the two-time correlation function, on GPU.
-        It's quite slow, especially when "num" and "denom" are not provided, but it can be useful when memory is a limitation on GPU.
-
-        Parameters
-        ----------
-        bin_idx: integer
-            Index of the bin to compute. Starts with 0!
-        num: numpy.ndarray, optional
-            Numerator: xpcs.dot(xpcs.T)
-        denom: numpy.ndarray, optional
-            Denominator: s.dot(s.T) where s = xpcs.sum(axis=-1).reshape((-1, 1))
-        n_threads: int, optional
-            Number of threads to compute the final step
-        calc_std: bool, optional
-            Whether to also compute standard deviation. Default is False.
-        dtype: numpy.dtype, optional
-            Data type for performing the final computation. Default is float64
-        """
-        if num is None:
-            num = self.d_corr_matrix[bin_idx].get()
-            num = flat_to_square(num, shape=(self.nframes, self.n_times), dtype=dtype)
-
-        if denom is None:
-            denom = self.d_sums_corr_matrix[bin_idx].get()
-            denom = flat_to_square(denom, shape=(self.nframes, self.n_times), dtype=dtype)
-
-        res = np.zeros(self.n_times, dtype=dtype)
-        if calc_std:
-            dev = np.zeros_like(res)
-
-        def _compute_diag(i):
-            dia_n = np.diag(num, k=i)
-            dia_d = np.diag(denom, k=i)
-            res[i] = np.sum(dia_n) / np.sum(dia_d)
-            if calc_std:
-                dev[i] = np.std(dia_n / dia_d) / sqrt(len(dia_d))
-
-        with ThreadPool(n_threads) as tp:
-            tp.map(_compute_diag, range(self.n_times))
-
-        res *= self.scale_factors[bin_idx + 1]
-        if calc_std:
-            return (res, dev, num, denom)
-        else:
-            return res, num, denom
-
-
-
 
 
 def flat_to_square(arr, shape=None, dtype=np.uint32):
