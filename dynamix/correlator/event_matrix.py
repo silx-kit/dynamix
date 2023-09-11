@@ -173,9 +173,6 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
                 "-DSHARED_ARRAYS_SIZE=%d" % 11000,  # for build_correlation_matrix_v2b, not working
             ],
         )
-        self.build_correlation_matrix_kernel_v1 = self.kernels.get_kernel("build_correlation_matrix_v1")
-        self.build_correlation_matrix_kernel_v2 = self.kernels.get_kernel("build_correlation_matrix_v2")
-        self.build_correlation_matrix_kernel_v2b = self.kernels.get_kernel("build_correlation_matrix_v2b")
         self.build_correlation_matrix_kernel_v3 = self.kernels.get_kernel("build_correlation_matrix_v3")
         self.build_scalar_correlation_matrix = self.kernels.get_kernel("build_flattened_scalar_correlation_matrix")
 
@@ -203,106 +200,6 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
         qmask_compacted = np.hstack(qmask_compacted)
         return qmask_compacted
         #
-
-    def _build_correlation_matrix_v1(self, data, pixel_indices, offsets):
-        qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
-        d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8))  # !
-
-        # TODO data setter
-        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
-        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
-        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
-        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32)  # TODO dtype
-        #
-
-        wg = None
-        grid = (self.n_times, self.n_bins)
-
-        evt = self.build_correlation_matrix_kernel_v1(
-            self.queue,
-            grid,
-            wg,
-            d_data.data,
-            d_pixel_indices.data,
-            d_offsets.data,
-            d_qmask_compacted.data,
-            self.d_corr_matrix.data,
-            # self.d_sums.data,
-            np.int32(self.nframes),
-            np.int32(self.n_times),
-            np.int32(1),
-        )
-        evt.wait()
-        self.profile_add(evt, "Build matrix correlation (v1)")
-
-        return self.d_corr_matrix
-
-    def _build_correlation_matrix_v2(self, data, pixel_indices, offsets):
-        qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
-        d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8))  # !
-
-        # TODO data setter
-        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
-        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
-        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
-        self.d_sums = parray.zeros(self.queue, self.nframes, np.uint32)  # TODO dtype
-        #
-
-        wg = None
-        grid = (self.n_times, self.nframes)
-
-        evt = self.build_correlation_matrix_kernel_v2(
-            self.queue,
-            grid,
-            wg,
-            d_data.data,
-            d_pixel_indices.data,
-            d_offsets.data,
-            d_qmask_compacted.data,
-            self.d_corr_matrix.data,
-            # self.d_sums.data,
-            np.int32(self.nframes),
-            np.int32(self.n_times),
-            np.int32(1),  # current q-bin
-        )
-        evt.wait()
-        self.profile_add(evt, "Build matrix correlation (v2)")
-
-        return self.d_corr_matrix
-
-    def _build_correlation_matrix_v2b(self, data, pixel_indices, offsets):
-        qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
-        d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8))  # !
-
-        # TODO proper set_data
-        d_data = self.d_data = parray.to_device(self.queue, data.astype(np.uint8))
-        d_pixel_indices = parray.to_device(self.queue, pixel_indices.astype(np.uint32))
-        d_offsets = parray.to_device(self.queue, offsets.astype(np.uint32))
-        #
-
-        wg = (1024, 1)  # TODO tune
-        grid = (updiv(self.n_times, wg[0]) * wg[0], self.nframes)
-
-        evt = self.build_correlation_matrix_kernel_v2b(
-            self.queue,
-            grid,
-            wg,
-            d_data.data,
-            d_pixel_indices.data,
-            d_offsets.data,
-            d_qmask_compacted.data,
-            self.d_corr_matrix.data,
-            np.int32(self.nframes),
-            np.int32(self.n_times),
-            # np.int32(self.n_bins)
-            np.int32(1),
-            LocalMemory(11000 * 1),
-            LocalMemory(11000 * 1),
-        )
-        evt.wait()
-        self.profile_add(evt, "Build correlation matrix (v2b)")
-
-        return self.d_corr_matrix
 
     def _build_correlation_matrix_v3(self, data, pixel_indices, offsets, max_space_nnz=None, check=True):
         qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
