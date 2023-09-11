@@ -173,7 +173,7 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
                 "-DSHARED_ARRAYS_SIZE=%d" % 11000,  # for build_correlation_matrix_v2b, not working
             ],
         )
-        self.build_correlation_matrix_kernel_v3 = self.kernels.get_kernel("build_correlation_matrix_v3")
+        self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix")
         self.build_scalar_correlation_matrix = self.kernels.get_kernel("build_flattened_scalar_correlation_matrix")
 
     def _get_max_space_nnz(self, max_space_nnz, offsets):
@@ -201,7 +201,7 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
         return qmask_compacted
         #
 
-    def _build_correlation_matrix_v3(self, data, pixel_indices, offsets, max_space_nnz=None, check=True):
+    def build_correlation_matrix(self, data, pixel_indices, offsets, max_space_nnz=None, check=True):
         qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
         d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8))  # !
 
@@ -216,7 +216,7 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
         wg = (512, 1)  # TODO tune
         grid = (updiv(max_space_nnz, wg[0]) * wg[0], self.nframes)
 
-        evt = self.build_correlation_matrix_kernel_v3(
+        evt = self.build_correlation_matrix_kernel(
             self.queue,
             grid,
             wg,
@@ -230,15 +230,18 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
             np.int32(self.n_times),
         )
         evt.wait()
-        self.profile_add(evt, "Build matrix correlation (v3)")
+        self.profile_add(evt, "Build matrix correlation")
 
         return self.d_corr_matrix
 
-    build_correlation_matrix = _build_correlation_matrix_v3
 
 
 class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
     kernel_files = ["matrix_evtcorrelator_time.cl", "utils.cl"]
+
+    """
+    A class for computing the two-times correlation function (TTCF) from time-compacted data.
+    """
 
     def __init__(
         self,
