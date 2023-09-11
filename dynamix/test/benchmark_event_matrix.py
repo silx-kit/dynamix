@@ -78,17 +78,19 @@ def benchmark_ttcf(dataset_name, n_frames=None):
         print("  - Total space-sparsity factor: %.1f" % (np.prod(frame_shape)*n_frames/data.size))
         print("  - NNZ samples per frame: %.0f +/- %.0f" % (np.mean(np.diff(offset)), np.std(np.diff(offset))))
 
+
+    # Compute TTCF (space-based)
     ttcf = None
     if use_space_correlator:
         ttcf_space = SMatrixEventCorrelator(frame_shape, n_frames, qmask=qmask, dtype=dtype, profile=True)
         res_s = ttcf_space._build_correlation_matrix_v3(data, pix_idx, offset).get()
-
 
     # To use the time-based TTCF, we first have to convert the data from space-compacted to time-compacted
     space2time = SpaceToTimeCompaction(frame_shape, profile=True, dtype=dtype)
     max_time_nnz = estimate_max_events_in_times_from_space_compacted_data(pix_idx, offset, estimate_from_n_frames=n_frames)
     d_t_data, d_t_times, d_t_offsets = space2time.space_compact_to_time_compact(data, pix_idx, offset) # opencl arrays
 
+    # Compute TTCF (time-based)
     ttcf_time = TMatrixEventCorrelator(frame_shape, n_frames, qmask=qmask, max_time_nnz=max_time_nnz, dtype=dtype, profile=True)
     res_t = ttcf_time.build_correlation_matrix(d_t_data, d_t_times, d_t_offsets).get()
 
@@ -142,3 +144,30 @@ def load_xpcs_compacted_data(fname, qmask_fname, n_frames=None, cast_to_dtype=np
     if cast_to_dtype is not None and data.dtype != cast_to_dtype:
         data = data.astype(cast_to_dtype)
     return data, pix_idx, offset, qmask, frame_shape
+
+
+
+def py_dense_correlator(xpcs_data, mask, calc_std=False):
+    ind = np.where(mask > 0)  # unused pixels are 0
+    xpcs_data = np.array(xpcs_data[:, ind[0], ind[1]], np.float32)  # (n_tau, n_pix)
+    meanmatr = np.mean(xpcs_data, axis=1)  # xpcs_data.sum(axis=-1).sum(axis=-1)/n_pix
+    ltimes, lenmatr = np.shape(xpcs_data)  # n_tau, n_pix
+    meanmatr.shape = 1, ltimes
+
+    num = np.dot(xpcs_data, xpcs_data.T)
+    denom = np.dot(meanmatr.T, meanmatr)
+
+    res = np.zeros(ltimes)  # was ones()
+    if calc_std:
+        dev = np.zeros_like(res)
+
+    for i in range(ltimes):  # was ltimes-1, so res[-1] was always 1 !
+        dia_n = np.diag(num, k=i) / lenmatr
+        dia_d = np.diag(denom, k=i)
+        res[i] = np.sum(dia_n) / np.sum(dia_d)
+        if calc_std:
+            dev[i] = np.std(dia_n / dia_d) / sqrt(len(dia_d))
+    if calc_std:
+        return (res, dev, num, denom)
+    else:
+        return res, num, denom
