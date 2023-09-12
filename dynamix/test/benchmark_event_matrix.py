@@ -63,8 +63,10 @@ for i in range(7, 13+1):
 # --------------------------- Dataset and options choice ----------------------
 # -----------------------------------------------------------------------------
 
+
 # List of datasets to test
-datasets_to_test = ["dataset01_scan0010"]
+# datasets_to_test = ["dataset01_scan0007", "dataset01_scan0008", "dataset01_scan0009",  "dataset01_scan0010", "dataset01_scan0011", "dataset01_scan0012", "dataset01_scan0013"]
+datasets_to_test = ["dataset02", "dataset03"]
 # Data type for XPCS data. It is always be uint8 in practice, though dynamix code should work with other data types
 dtype = np.uint8
 # Whether to print information on datasets sparsity
@@ -76,6 +78,7 @@ use_space_correlator = True*0
 
 
 def benchmark_ttcf(dataset_name, n_frames=None):
+    print("-"*80 + "\n" + "Processing %s" % dataset_name + "\n" + "-" * 80)
 
     data_fname = datasets[dataset_name]["data_fname"]
     qmask_fname = datasets[dataset_name]["qmask_fname"]
@@ -92,7 +95,7 @@ def benchmark_ttcf(dataset_name, n_frames=None):
 
 
     # Compute TTCF (space-based)
-    ttcf = None
+    ttcf_space = None
     if use_space_correlator:
         ttcf_space = SMatrixEventCorrelator(frame_shape, n_frames, qmask=qmask, dtype=dtype, profile=True)
         num_s = ttcf_space.build_correlation_matrix(data, pix_idx, offset).get()
@@ -107,6 +110,7 @@ def benchmark_ttcf(dataset_name, n_frames=None):
     num_t = ttcf_time.build_correlation_matrix(d_t_data, d_t_times, d_t_offsets).get()
     ttcf_time._correlate_sums()
     denom_t = ttcf_time.d_sums_corr_matrix.get()
+    g2_t, std_t, _, _ = ttcf_time.compute_normalized_ttcf(0, calc_std=True)
 
     if print_timings:
         if use_space_correlator:
@@ -114,41 +118,13 @@ def benchmark_ttcf(dataset_name, n_frames=None):
         print(ttcf_time.get_timings())
         print(space2time.get_timings())
 
-    ttcf_ref, std_ref, num_ref, denom_ref = load_reference_result(dataset_name)
+    g2_ref, std_ref, num_ref, denom_ref = load_reference_result(dataset_name)
 
 
-    # compare_results(n_frames, ttcf_t, std_t, num_t, denom_t, ttcf_ref, std_ref, num_ref, denom_ref)
-    compare_results(n_frames, None, None, num_t, denom_t, ttcf_ref, std_ref, num_ref, denom_ref, ttcf_time.scale_factors[1])
+    compare_results(n_frames, g2_t, std_t, num_t, denom_t, g2_ref, std_ref, num_ref, denom_ref, ttcf_time.scale_factors[1])
 
 
-    return num_ref, denom_ref, num_t, denom_t, ttcf_time
-
-
-
-
-
-
-
-def compare_results(n_frames, ttcf, std, num, denom, ttcf_ref, std_ref, num_ref, denom_ref, scale_factor):
-    """
-    Compare the GPU correlator results with the naive-python-numpy reference implementation.
-    The latter was computed only for qbin==1 (hence the [0] in the code below).
-    Also, the GPU correlator uses a flat data structure, so we have to use flat_to_square.
-    """
-    if ttcf_ref.shape[0] != n_frames:
-        print(
-            "Cannot compare with reference results: reference is computed for n_frames=%d but I currently have n_frames=%d"
-            % (ttcf_ref.shape[0], n_frames)
-        )
-        return
-
-    # use first q-bin (GPU correlator does all q-bins simultaneously)
-    num_square = flat_to_square(num[0])
-    denom_square = flat_to_square(denom[0], dtype=np.float64) # computation was done on int type
-    denom_square /= scale_factor ** 2
-    print("Max error for numerator: %.3e" % (np.max(np.abs(num_square - np.triu(num_ref)))))
-    print("Max error for denominator: %.3e" % (np.max(np.abs(denom_square - np.triu(denom_ref)))))
-
+    return g2_t, std_t, num_t, denom_t, g2_ref, std_ref, num_ref, denom_ref, ttcf_time
 
 
 
@@ -219,7 +195,32 @@ def load_reference_result(dataset_name):
     return ttcf, std, num, denom
 
 
+
+def compare_results(n_frames, g2, std, num, denom, g2_ref, std_ref, num_ref, denom_ref, scale_factor):
+    """
+    Compare the GPU correlator results with the naive-python-numpy reference implementation.
+    The latter was computed only for qbin==1 (hence the [0] in the code below).
+    Also, the GPU correlator uses a flat data structure, so we have to use flat_to_square.
+    """
+    if num_ref.shape[0] != n_frames:
+        print(
+            "Cannot compare with reference results: reference is computed for n_frames=%d but I currently have n_frames=%d"
+            % (num_ref.shape[0], n_frames)
+        )
+        return
+
+    ma = lambda x: np.max(np.abs(x))
+    # use first q-bin (GPU correlator does all q-bins simultaneously)
+    num_square = flat_to_square(num[0])
+    denom_square = flat_to_square(denom[0], dtype=np.float64) # computation was done on int type
+    denom_square /= scale_factor ** 2
+    print("Max error for numerator: %.3e" % (ma(num_square - np.triu(num_ref))))
+    print("Max error for denominator: %.3e" % (ma(denom_square - np.triu(denom_ref))))
+    print("Max error for TTCF: %.3e (min ref val = %.3e)" % (ma(g2 - g2_ref), np.min(g2_ref)))
+    print("Max error for STD: %.3e (min ref val = %.3e)" % (ma(std - std_ref), np.min(std_ref)))
+
+
+
 if __name__ == "__main__":
-    # for dataset_name in datasets_to_test:
-        # benchmark_ttcf(dataset_name, n_frames=10000)
-    num, denom, num_t, denom_t, ttcf_time = benchmark_ttcf("dataset01_scan0010", n_frames=20000)
+    for dataset_name in datasets_to_test:
+        benchmark_ttcf(dataset_name)
