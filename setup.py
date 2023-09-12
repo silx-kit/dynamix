@@ -64,6 +64,7 @@ def setup_package():
         package_data = {
             'dynamix.resources': [
                 'opencl/*.cl',
+                'opencl/*.h',
             ]
         },
         ext_modules=ext,
