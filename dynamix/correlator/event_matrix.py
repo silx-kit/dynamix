@@ -123,6 +123,7 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
 
         res *= self.scale_factors[bin_idx + 1]
         if calc_std:
+            dev *= self.scale_factors[bin_idx + 1]
             return (res, dev, num, denom)
         else:
             return res, num, denom
