@@ -9,6 +9,7 @@ from os import path
 import numpy as np
 from dynamix.correlator.event_matrix import SMatrixEventCorrelator, TMatrixEventCorrelator
 from dynamix.sparse import SpaceToTimeCompaction, estimate_max_events_in_times_from_space_compacted_data
+from dynamix.correlator.event_matrix import flat_to_square
 
 # -----------------------------------------------------------------------------
 # ---------------------------- Datasets definitions ---------------------------
@@ -17,23 +18,31 @@ from dynamix.sparse import SpaceToTimeCompaction, estimate_max_events_in_times_f
 datasets = {
     "dataset02": {
         # dataset02: 10k frames. Not really sparse in the ROI
-        "data_fname": "/data/id10/inhouse/software/dynamix/datasets/dataset02/scan0005/eiger1_0000.h5",
+        "raw_data_fname": "/data/id10/inhouse/software/dynamix/datasets/dataset02/scan0005/eiger1_0000.h5",
+        "data_fname": "/scisoft/dynamix/data/dataset02/xpcs_010000.npz",
         "qmask_fname":  "/data/id10/inhouse/software/dynamix/datasets/dataset02/analysis/scan0005_0_10000/DUKE_qmask.npy",
+        "reference_fname": "/scisoft/dynamix/data/dataset02/reference.npz",
     },
     "dataset03": {
         # dataset03: 40k frames
-        "data_fname": "/data/id10/inhouse/software/dynamix/datasets/dataset03/scan0002/eiger4m_0000.h5",
+        "raw_data_fname": "/data/id10/inhouse/software/dynamix/datasets/dataset03/scan0002/eiger4m_0000.h5",
+        "data_fname": "/scisoft/dynamix/data/dataset03/xpcs_040000.npz",
         "qmask_fname": "/data/id10/inhouse/software/dynamix/datasets/dataset03/analysis/Pt1_10GPa_2_242C/scan0002_0_5000/Pt1_10GPa_2_242C_qmask.npy",
+        "reference_fname": "/scisoft/dynamix/data/dataset03/reference.npz",
     },
     "dataset04": {
         # dataset04: 200k frames
-        "data_fname": "/scisoft/dynamix/data/dataset04/Vit4_0GPa_Tg_m_30_Monday_25p0_575K_00001_merged.h5",
+        "raw_data_fname": "/scisoft/dynamix/data/dataset04/Vit4_0GPa_Tg_m_30_Monday_25p0_575K_00001_merged.h5",
+        "data_fname": "/scisoft/dynamix/data/dataset04/xpcs_200000.npz",
         "qmask_fname": "/data/id10/inhouse/software/dynamix/datasets/dataset04/analysis/Vit4_0GPa_Tg_m_30_Monday_25p0_575K/00001_0_200000/Vit4_0GPa_Tg_m_30_Monday_25p0_575K_qmask.npy",
+        "reference_fname": "/scisoft/dynamix/data/dataset04/reference.npz", # GPU can do only 100k frames for now (with 40GB mem)
     },
     "dataset05": {
         # dataset04: 1.2M frames
-        "data_fname": "/scisoft/dynamix/data/dataset05/dataset05_merged.h5",
-        "qmask_fname": "/scisoft/dynamix/data/dataset05/qmask_dummy.npy" # hand-crafted, using data < 10...
+        "raw_data_fname": "/scisoft/dynamix/data/dataset05/dataset05_merged.h5",
+        "data_fname": "/scisoft/dynamix/data/dataset05/xpcs_1200000.npz",
+        "qmask_fname": "/scisoft/dynamix/data/dataset05/qmask_dummy.npy", # hand-crafted, using data < 10...
+        "reference_fname": "/scisoft/dynamix/data/dataset05/refernece.npz", # GPU can do only 100k frames for now (with 40GB mem)
     },
 }
 
@@ -41,9 +50,11 @@ datasets = {
 # 20k frames, sparse, WAXS geometry - some pixels have high data value
 for i in range(7, 13+1):
     datasets["dataset01_scan%04d" % i] = {
-        "data_fname": "/scisoft/dynamix/data/dataset01_scan%04d/scan%04d_merged.h5" % (i, i),
+        "raw_data_fname": "/scisoft/dynamix/data/dataset01_scan%04d/scan%04d_merged.h5" % (i, i),
+        "data_fname": "/scisoft/dynamix/data/dataset01_scan%04d/xpcs_020000.npz" % i,
         # "qmask_fname": "/data/id10/inhouse/software/dynamix/datasets/dataset01/analysis/SiO2-21p67keV/scan%04d_0_20000/SiO2-21p67keV_qmask.npy" % i,
         "qmask_fname": "/scisoft/dynamix/data/dataset01_scan0010/SiO2-21p67keV_qmask_pp.npy",
+        "reference_fname": "/scisoft/dynamix/data/dataset01_scan%04d/reference.npz" % i,
     }
 
 # ---
@@ -61,7 +72,7 @@ do_sparse_stats = True
 # Whether to print information on execution times
 print_timings = True
 # Whether to also test the space-based correlators. W
-use_space_correlator = True
+use_space_correlator = True*0
 
 
 def benchmark_ttcf(dataset_name, n_frames=None):
@@ -72,6 +83,7 @@ def benchmark_ttcf(dataset_name, n_frames=None):
     data, pix_idx, offset, qmask, frame_shape = load_xpcs_compacted_data(
         data_fname, qmask_fname, n_frames=n_frames, cast_to_dtype=dtype
     )
+    n_frames = offset.size - 1
     if do_sparse_stats:
         print("Spatial sparsity:")
         print("  - Max %d non-zero samples per frame" % (np.diff(offset).max()))
@@ -83,7 +95,7 @@ def benchmark_ttcf(dataset_name, n_frames=None):
     ttcf = None
     if use_space_correlator:
         ttcf_space = SMatrixEventCorrelator(frame_shape, n_frames, qmask=qmask, dtype=dtype, profile=True)
-        res_s = ttcf_space._build_correlation_matrix_v3(data, pix_idx, offset).get()
+        num_s = ttcf_space.build_correlation_matrix(data, pix_idx, offset).get()
 
     # To use the time-based TTCF, we first have to convert the data from space-compacted to time-compacted
     space2time = SpaceToTimeCompaction(frame_shape, profile=True, dtype=dtype)
@@ -92,7 +104,9 @@ def benchmark_ttcf(dataset_name, n_frames=None):
 
     # Compute TTCF (time-based)
     ttcf_time = TMatrixEventCorrelator(frame_shape, n_frames, qmask=qmask, max_time_nnz=max_time_nnz, dtype=dtype, profile=True)
-    res_t = ttcf_time.build_correlation_matrix(d_t_data, d_t_times, d_t_offsets).get()
+    num_t = ttcf_time.build_correlation_matrix(d_t_data, d_t_times, d_t_offsets).get()
+    ttcf_time._correlate_sums()
+    denom_t = ttcf_time.d_sums_corr_matrix.get()
 
     if print_timings:
         if use_space_correlator:
@@ -100,6 +114,14 @@ def benchmark_ttcf(dataset_name, n_frames=None):
         print(ttcf_time.get_timings())
         print(space2time.get_timings())
 
+    ttcf_ref, std_ref, num_ref, denom_ref = load_reference_result(dataset_name)
+
+
+    # compare_results(n_frames, ttcf_t, std_t, num_t, denom_t, ttcf_ref, std_ref, num_ref, denom_ref)
+    compare_results(n_frames, None, None, num_t, denom_t, ttcf_ref, std_ref, num_ref, denom_ref, ttcf_time.scale_factors[1])
+
+
+    return num_ref, denom_ref, num_t, denom_t, ttcf_time
 
 
 
@@ -107,14 +129,25 @@ def benchmark_ttcf(dataset_name, n_frames=None):
 
 
 
+def compare_results(n_frames, ttcf, std, num, denom, ttcf_ref, std_ref, num_ref, denom_ref, scale_factor):
+    """
+    Compare the GPU correlator results with the naive-python-numpy reference implementation.
+    The latter was computed only for qbin==1 (hence the [0] in the code below).
+    Also, the GPU correlator uses a flat data structure, so we have to use flat_to_square.
+    """
+    if ttcf_ref.shape[0] != n_frames:
+        print(
+            "Cannot compare with reference results: reference is computed for n_frames=%d but I currently have n_frames=%d"
+            % (ttcf_ref.shape[0], n_frames)
+        )
+        return
 
-
-
-
-
-
-
-
+    # use first q-bin (GPU correlator does all q-bins simultaneously)
+    num_square = flat_to_square(num[0])
+    denom_square = flat_to_square(denom[0], dtype=np.float64) # computation was done on int type
+    denom_square /= scale_factor ** 2
+    print("Max error for numerator: %.3e" % (np.max(np.abs(num_square - np.triu(num_ref)))))
+    print("Max error for denominator: %.3e" % (np.max(np.abs(denom_square - np.triu(denom_ref)))))
 
 
 
@@ -171,3 +204,22 @@ def py_dense_correlator(xpcs_data, mask, calc_std=False):
         return (res, dev, num, denom)
     else:
         return res, num, denom
+
+
+def load_reference_result(dataset_name):
+    ref_fname = datasets[dataset_name]["reference_fname"]
+    if not path.isfile(ref_fname):
+        raise FileNotFoundError(ref_fname)
+    f_d = np.load(ref_fname)
+    num = f_d["num"][()]
+    denom = f_d["denom"][()]
+    std = f_d["std"][()]
+    ttcf = f_d["ttcf"][()]
+    f_d.close()
+    return ttcf, std, num, denom
+
+
+if __name__ == "__main__":
+    # for dataset_name in datasets_to_test:
+        # benchmark_ttcf(dataset_name, n_frames=10000)
+    num, denom, num_t, denom_t, ttcf_time = benchmark_ttcf("dataset01_scan0010", n_frames=20000)
