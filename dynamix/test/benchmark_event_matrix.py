@@ -118,13 +118,14 @@ def benchmark_ttcf(dataset_name, n_frames=None):
         print(ttcf_time.get_timings())
         print(space2time.get_timings())
 
-    g2_ref, std_ref, num_ref, denom_ref = load_reference_result(dataset_name)
+    try:
+        g2_ref, std_ref, num_ref, denom_ref = load_reference_result(dataset_name)
+        compare_results(n_frames, g2_t, std_t, num_t, denom_t, g2_ref, std_ref, num_ref, denom_ref, ttcf_time.scale_factors[1])
+    except FileNotFoundError:
+        print("Can't compare with reference implementation - no reference file")
 
 
-    compare_results(n_frames, g2_t, std_t, num_t, denom_t, g2_ref, std_ref, num_ref, denom_ref, ttcf_time.scale_factors[1])
 
-
-    return g2_t, std_t, num_t, denom_t, g2_ref, std_ref, num_ref, denom_ref, ttcf_time
 
 
 
@@ -222,5 +223,6 @@ def compare_results(n_frames, g2, std, num, denom, g2_ref, std_ref, num_ref, den
 
 
 if __name__ == "__main__":
-    for dataset_name in datasets_to_test:
-        benchmark_ttcf(dataset_name)
+    benchmark_ttcf("dataset04", n_frames=100000)
+    # for dataset_name in datasets_to_test:
+        # benchmark_ttcf(dataset_name)
