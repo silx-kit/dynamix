@@ -255,7 +255,13 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
         return qmask_compacted
         #
 
-    def build_correlation_matrix(self, data, pixel_indices, offsets, max_space_nnz=None, check=True):
+    def build_correlation_matrices(self, data, pixel_indices, offsets, max_space_nnz=None, check=True):
+        """
+        Build the following correlation matrices:
+          - numerator: < I(t1, p) * I(t2, p) >_p
+          - denominator: < I(t1, p) >_p * < I(t2, p) >_p
+        Where < . >_p denotes summing over a given q-bin.
+        """
         qmask_compacted = self._get_compacted_qmask(pixel_indices, offsets)
         d_qmask_compacted = parray.to_device(self.queue, qmask_compacted.astype(np.int8))  # !
 
@@ -286,7 +292,10 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
         evt.wait()
         self.profile_add(evt, "Build matrix correlation")
 
-        return self.d_corr_matrix
+        # Build denominator
+        self._correlate_sums()
+
+        return self.d_corr_matrix, self.d_sums_corr_matrix
 
 
 
@@ -339,7 +348,13 @@ class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
         )
         self.build_scalar_correlation_matrix = self.kernels.get_kernel("build_flattened_scalar_correlation_matrix")
 
-    def build_correlation_matrix(self, data, times, offsets, check=True):
+    def build_correlation_matrices(self, data, times, offsets, check=True):
+        """
+        Build the following correlation matrices:
+          - numerator: < I(t1, p) * I(t2, p) >_p
+          - denominator: < I(t1, p) >_p * < I(t2, p) >_p
+        Where < . >_p denotes summing over a given q-bin.
+        """
         wg = None
         grid = tuple(self.shape[::-1])
 
@@ -372,7 +387,10 @@ class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
         evt.wait()
         self.profile_add(evt, "Build matrix correlation (times repr.)")
 
-        return self.d_corr_matrix
+        # Build denominator
+        self._correlate_sums()
+
+        return self.d_corr_matrix, self.d_sums_corr_matrix
 
 
 def flat_to_square(arr, shape=None, dtype=np.uint32):
