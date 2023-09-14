@@ -191,11 +191,12 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         self.c_dtype = dtype_to_ctype(self.dtype)
         self.c_sums_dtype = dtype_to_ctype(self._sums_dtype)
         self.idx_c_dtype = "int"  # TODO custom ?
+        self._res_c_dtype = dtype_to_ctype(self._res_dtype)
         self._dtype_compilation_flags = [
-            "-DDTYPE=%s" % (dtype_to_ctype(self.dtype)),
+            "-DDTYPE=%s" % self.c_dtype,
             "-DOFFSET_DTYPE=%s" % (dtype_to_ctype(self._offset_dtype)),
             "-DQMASK_DTYPE=%s" % (dtype_to_ctype(self._qmask_dtype)),
-            "-DRES_DTYPE=%s" %(dtype_to_ctype(self._res_dtype))
+            "-DRES_DTYPE=%s" % self._res_c_dtype
         ]
 
 

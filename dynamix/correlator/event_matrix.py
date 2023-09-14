@@ -2,7 +2,7 @@ from os import path
 from math import sqrt
 from multiprocessing.pool import ThreadPool
 import numpy as np
-from pyopencl import LocalMemory
+from pyopencl.elementwise import ElementwiseKernel
 import pyopencl.array as parray
 from ..utils import get_opencl_srcfile, updiv
 from .common import OpenclCorrelator
@@ -52,6 +52,7 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
             "sums_corr_matrix", (self.n_bins, self.correlation_matrix_flat_size), dtype=self._res_dtype
         )
         self.d_sums = self.allocate_array("sums", (self.n_bins, self.nframes), dtype=self._res_dtype)
+        self.cl_div = None
 
 
     def _check_arrays(self, data, pixel_indices, offsets):
@@ -79,7 +80,59 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
         self.profile_add(evt, "Correlate d_sums")
 
 
-    def compute_normalized_ttcf(self, bin_idx, num=None, denom=None, n_threads=1, calc_std=False, dtype=np.float64):
+    def _get_normalized_ttcf_opencl(self, d_num, d_denom):
+        if self.cl_div is None:
+            self.cl_div = ElementwiseKernel(
+                self.ctx,
+                "float* res, %s* num, %s* denom" % (self._res_c_dtype, self._res_c_dtype),
+                "num[i] /= denom[i]",
+                "float_int_divide",
+                preamble='#include "dtypes.h',
+                options=self._compile_options,
+            )
+        normalized_ttcf = self.allocate_array("normalized_ttcf", d_num.shape, dtype=np.float32)
+        self.cl_div(normalized_ttcf, d_num, d_denom)
+        return normalized_ttcf
+
+
+    def _get_normalized_ttcf_numpy(self, num, denom):
+        res = num.astype(np.float32)
+        res /= denom
+        return res
+
+
+    def get_normalized_ttcf(self, calculate_on_device=True):
+        """
+        From the previously-computed numerator and denominator of TTCF,
+        compute the normalized matrix, i.e num/denom (including scaling factors).
+
+        Parameters
+        ----------
+        calculate_on_device: bool, optional
+            Whether to perform computations on GPU. This needs an additional memory allocation,
+            so it might be not suitable for large number of frames.
+
+        Returns
+        -------
+        normalized_ttcf: numpy.ndarray
+            A numpy array containing the normalized two-times correlation matrix.
+            The resulting array has shape (n_bins, n_frames, n_frames), i.e there are n_bins matrices.
+            Only the upper half of each matrix was computed.
+        """
+        num = self.d_corr_matrix
+        denom = self.d_sums_corr_matrix
+        if calculate_on_device:
+            ttcf_allbins = self._get_normalized_ttcf_opencl(num, denom)
+        else:
+            num = num.get()
+            denom = denom.get()
+            ttcf_allbins = self._get_normalized_ttcf_numpy(num, denom)
+        normalized_ttcf = np.zeros((self.n_bins, self.n_frames, self.n_frames), "f")
+        for bin_idx in range(self.n_bins):
+            normalized_ttcf[bin_idx] = flat_to_square(ttcf_allbins[bin_idx], dtype="f")
+        return normalized_ttcf
+
+
         """
         Compute the two-time correlation function, on GPU.
         It's quite slow, especially when "num" and "denom" are not provided, but it can be useful when memory is a limitation on GPU.
@@ -166,13 +219,13 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
     def _setup_kernels(self, max_space_nnz):
         self.max_space_nnz = max_space_nnz
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
+        self._compile_options = self._dtype_compilation_flags + [
+            "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
+            "-DSHARED_ARRAYS_SIZE=%d" % 11000,  # for build_correlation_matrix_v2b, not working
+        ],
         self.compile_kernels(
             kernel_files=kernel_files,
-            compile_options=self._dtype_compilation_flags
-            + [
-                "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
-                "-DSHARED_ARRAYS_SIZE=%d" % 11000,  # for build_correlation_matrix_v2b, not working
-            ],
+            compile_options=self._compile_options,
         )
         self.build_correlation_matrix_kernel = self.kernels.get_kernel("build_correlation_matrix")
         self.build_scalar_correlation_matrix = self.kernels.get_kernel("build_flattened_scalar_correlation_matrix")
@@ -273,13 +326,13 @@ class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
     def _setup_kernels(self, max_time_nnz):
         self._max_nnz = max_time_nnz
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
+        self._compile_options = self._dtype_compilation_flags + [
+            "-DMAX_EVT_COUNT=%d" % self._max_nnz,
+            "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
+        ],
         self.compile_kernels(
             kernel_files=kernel_files,
-            compile_options=self._dtype_compilation_flags
-            + [
-                "-DMAX_EVT_COUNT=%d" % self._max_nnz,
-                "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
-            ],
+            compile_options=self._compile_options,
         )
         self.build_correlation_matrix_kernel_times = self.kernels.get_kernel(
             "build_correlation_matrix_times_representation"
