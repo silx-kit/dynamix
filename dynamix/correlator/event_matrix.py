@@ -97,11 +97,12 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
 
     def _get_normalized_ttcf_numpy(self, num, denom):
         res = num.astype(np.float32)
+        denom = denom.astype(np.float32)
         res /= denom
         return res
 
 
-    def get_normalized_ttcf(self, calculate_on_device=True):
+    def get_normalized_ttcf(self, calculate_on_device=False):
         """
         From the previously-computed numerator and denominator of TTCF,
         compute the normalized matrix, i.e num/denom (including scaling factors).
@@ -127,24 +128,21 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
             num = num.get()
             denom = denom.get()
             ttcf_allbins = self._get_normalized_ttcf_numpy(num, denom)
-        normalized_ttcf = np.zeros((self.n_bins, self.n_frames, self.n_frames), "f")
+        normalized_ttcf = np.zeros((self.n_bins, self.n_times, self.n_times), "f")
         for bin_idx in range(self.n_bins):
             normalized_ttcf[bin_idx] = flat_to_square(ttcf_allbins[bin_idx], dtype="f")
         return normalized_ttcf
 
 
+    def get_correlation_function(self, bin_idx, n_threads=1, calc_std=False, return_num_denom=False, dtype=np.float64):
         """
-        Compute the two-time correlation function, on GPU.
-        It's quite slow, especially when "num" and "denom" are not provided, but it can be useful when memory is a limitation on GPU.
+        Compute the two-time correlation function.
+        This function only uses numpy, so it's quite slow for large arrays.
 
         Parameters
         ----------
         bin_idx: integer
             Index of the bin to compute. Starts with 0!
-        num: numpy.ndarray, optional
-            Numerator: xpcs.dot(xpcs.T)
-        denom: numpy.ndarray, optional
-            Denominator: s.dot(s.T) where s = xpcs.sum(axis=-1).reshape((-1, 1))
         n_threads: int, optional
             Number of threads to compute the final step
         calc_std: bool, optional
@@ -152,13 +150,11 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
         dtype: numpy.dtype, optional
             Data type for performing the final computation. Default is float64
         """
-        if num is None:
-            num = self.d_corr_matrix[bin_idx].get()
-            num = flat_to_square(num, shape=(self.nframes, self.n_times), dtype=dtype)
+        num = self.d_corr_matrix[bin_idx].get()
+        num = flat_to_square(num, shape=(self.nframes, self.n_times), dtype=dtype)
 
-        if denom is None:
-            denom = self.d_sums_corr_matrix[bin_idx].get()
-            denom = flat_to_square(denom, shape=(self.nframes, self.n_times), dtype=dtype)
+        denom = self.d_sums_corr_matrix[bin_idx].get()
+        denom = flat_to_square(denom, shape=(self.nframes, self.n_times), dtype=dtype)
 
         res = np.zeros(self.n_times, dtype=dtype)
         if calc_std:
@@ -175,11 +171,66 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
             tp.map(_compute_diag, range(self.n_times))
 
         res *= self.scale_factors[bin_idx + 1]
+
+        ret = [res]
         if calc_std:
             dev *= self.scale_factors[bin_idx + 1]
-            return (res, dev, num, denom)
+            ret += [dev]
+        if return_num_denom:
+            ret += [num, denom]
+        if len(ret) == 1:
+            return ret[0]
         else:
-            return res, num, denom
+            return tuple(ret)
+
+
+    def cc(self, data, pixel_indices, offsets, bins="all", **kwargs):
+        """
+        Compute XPCS functions from space-compacted or time-compacted data.
+
+        Parameters
+        ----------
+        data: pyopencl.Array
+            space-comacted data or time-compacted data
+        pixel_indices: pyopencl.Array
+            For space-compacted data: pixel indices
+            For time-compacted data: times indices
+        offsets: pyopencl.Array
+            Frames offsets.
+            For space-compacted data: offsets[i+1] - offsets[i] is the number of non-zero elements in frame at time=i
+               i.e offsets[i+1] - offsets[i] = (xpcs_data_dense[i, :] > 0).sum()  # assuming 1D spatial indexing in the second axis
+            For time-compacted data: offsets[i+1] - offsets[i] is the number of non-zero elements at pixel location i
+               i.e offsets[i+1] - offsets[i] = (xpcs_data_dense[:, i] > 0).sum()  # assuming 1D spatial indexing in the second axis
+        return_num_and_denom: bool, optional
+            Whether to return the TTCF as (num, denom) instead of num/denom.
+        bins: str or list of int, optional
+            Bins values to compute the correlation function.
+            By default the computations are done on all scattering vectors defined in qmask.
+
+
+        Returns
+        --------
+        g2: numpy.ndarray
+            One-dimensional array of size 'n_frames': the g2 correlation function.
+        std: numpy.ndarray
+            One-dimensional array of size 'n_frames': the standard deviation on correlation function.
+        num_or_ttcf: numpy.ndarray
+            If return_num_and_denom is False, this is the normalized TTCF, i.e "num/denom".
+            If return_num_and_denom is True, this is "num".
+        denom: numpy.ndarray
+            If return_num_and_denom is False, this is None.
+            If return_num_and_denom is True, this is "denom".
+        """
+        # Build numerator (call subclass methods)
+        self.build_correlation_matrices(data, pixel_indices, offsets, **kwargs) # build_correlation_matrix() has some extra args
+
+        if bins == "all" or bins is None:
+            bins_indices = self.bins - 1
+        else:
+            bins_indices = bins
+        for bin_idx in bins_indices:
+            g2, std, _, _ = self._compute_final_ttcf(bin_idx, calc_std=True)
+
 
 
 
@@ -222,7 +273,7 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
         self._compile_options = self._dtype_compilation_flags + [
             "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
             "-DSHARED_ARRAYS_SIZE=%d" % 11000,  # for build_correlation_matrix_v2b, not working
-        ],
+        ]
         self.compile_kernels(
             kernel_files=kernel_files,
             compile_options=self._compile_options,
@@ -338,7 +389,7 @@ class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
         self._compile_options = self._dtype_compilation_flags + [
             "-DMAX_EVT_COUNT=%d" % self._max_nnz,
             "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
-        ],
+        ]
         self.compile_kernels(
             kernel_files=kernel_files,
             compile_options=self._compile_options,
