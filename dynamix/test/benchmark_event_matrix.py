@@ -151,11 +151,11 @@ def py_dense_correlator(xpcs_data, mask, calc_std=False):
     num = np.dot(xpcs_data, xpcs_data.T)
     denom = np.dot(meanmatr.T, meanmatr)
 
-    res = np.zeros(ltimes)  # was ones()
+    res = np.zeros(ltimes)
     if calc_std:
         dev = np.zeros_like(res)
 
-    for i in range(ltimes):  # was ltimes-1, so res[-1] was always 1 !
+    for i in range(ltimes):
         dia_n = np.diag(num, k=i) / lenmatr
         dia_d = np.diag(denom, k=i)
         res[i] = np.sum(dia_n) / np.sum(dia_d)
@@ -195,8 +195,8 @@ def compare_results(n_frames, g2, std, num, denom, g2_ref, std_ref, num_ref, den
         return
 
     ma = lambda x: np.max(np.abs(x))
-    num_square = num # flat_to_square(num)
-    denom_square = denom # flat_to_square(denom, dtype=np.float64) # computation was done on int type
+    num_square = num
+    denom_square = denom
     denom_square /= scale_factor ** 2
     print("Max error for numerator: %.3e" % (ma(num_square - np.triu(num_ref))))
     print("Max error for denominator: %.3e" % (ma(denom_square - np.triu(denom_ref))))
