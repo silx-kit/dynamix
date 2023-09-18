@@ -7,6 +7,7 @@ The reference results were computed using the "py_dense_correlator()" function.
 
 from os import path
 import numpy as np
+from math import sqrt
 from dynamix.correlator.event_matrix import SMatrixEventCorrelator, TMatrixEventCorrelator
 from dynamix.sparse import SpaceToTimeCompaction, estimate_max_events_in_times_from_space_compacted_data
 from dynamix.correlator.event_matrix import flat_to_square
@@ -42,7 +43,7 @@ datasets = {
         "raw_data_fname": "/scisoft/dynamix/data/dataset05/dataset05_merged.h5",
         "data_fname": "/scisoft/dynamix/data/dataset05/xpcs_1200000.npz",
         "qmask_fname": "/scisoft/dynamix/data/dataset05/qmask_dummy.npy", # hand-crafted, using data < 10...
-        "reference_fname": "/scisoft/dynamix/data/dataset05/refernece.npz", # GPU can do only 100k frames for now (with 40GB mem)
+        "reference_fname": "/scisoft/dynamix/data/dataset05/reference.npz", # GPU can do only 100k frames for now (with 40GB mem)
     },
 }
 
@@ -57,24 +58,9 @@ for i in range(7, 13+1):
         "reference_fname": "/scisoft/dynamix/data/dataset01_scan%04d/reference.npz" % i,
     }
 
-# ---
-
 # -----------------------------------------------------------------------------
-# --------------------------- Dataset and options choice ----------------------
 # -----------------------------------------------------------------------------
-
-
-# List of datasets to test
-# datasets_to_test = ["dataset01_scan0007", "dataset01_scan0008", "dataset01_scan0009",  "dataset01_scan0010", "dataset01_scan0011", "dataset01_scan0012", "dataset01_scan0013"]
-datasets_to_test = ["dataset02", "dataset03"]
-# Data type for XPCS data. It is always be uint8 in practice, though dynamix code should work with other data types
-dtype = np.uint8
-# Whether to print information on datasets sparsity
-do_sparse_stats = True
-# Whether to print information on execution times
-print_timings = True
-# Whether to also test the space-based correlators. W
-use_space_correlator = True*0
+# -----------------------------------------------------------------------------
 
 
 def benchmark_ttcf(dataset_name, n_frames=None):
@@ -98,7 +84,7 @@ def benchmark_ttcf(dataset_name, n_frames=None):
     ttcf_space = None
     if use_space_correlator:
         ttcf_space = SMatrixEventCorrelator(frame_shape, n_frames, qmask=qmask, dtype=dtype, profile=True)
-        num_s = ttcf_space.build_correlation_matrix(data, pix_idx, offset).get()
+        ttcf_space.build_correlation_matrices(data, pix_idx, offset)
 
     # To use the time-based TTCF, we first have to convert the data from space-compacted to time-compacted
     space2time = SpaceToTimeCompaction(frame_shape, profile=True, dtype=dtype)
@@ -107,10 +93,8 @@ def benchmark_ttcf(dataset_name, n_frames=None):
 
     # Compute TTCF (time-based)
     ttcf_time = TMatrixEventCorrelator(frame_shape, n_frames, qmask=qmask, max_time_nnz=max_time_nnz, dtype=dtype, profile=True)
-    num_t = ttcf_time.build_correlation_matrix(d_t_data, d_t_times, d_t_offsets).get()
-    ttcf_time._correlate_sums()
-    denom_t = ttcf_time.d_sums_corr_matrix.get()
-    g2_t, std_t, _, _ = ttcf_time.compute_normalized_ttcf(0, calc_std=True)
+    ttcf_time.build_correlation_matrices(d_t_data, d_t_times, d_t_offsets)
+    g2_t, std_t, num_t, denom_t = ttcf_time.get_correlation_function(0, calc_std=True, n_threads=16, return_num_denom=True)
 
     if print_timings:
         if use_space_correlator:
@@ -124,7 +108,7 @@ def benchmark_ttcf(dataset_name, n_frames=None):
     except FileNotFoundError:
         print("Can't compare with reference implementation - no reference file")
 
-
+    return ttcf_time # For Debug
 
 
 
@@ -211,9 +195,8 @@ def compare_results(n_frames, g2, std, num, denom, g2_ref, std_ref, num_ref, den
         return
 
     ma = lambda x: np.max(np.abs(x))
-    # use first q-bin (GPU correlator does all q-bins simultaneously)
-    num_square = flat_to_square(num[0])
-    denom_square = flat_to_square(denom[0], dtype=np.float64) # computation was done on int type
+    num_square = num # flat_to_square(num)
+    denom_square = denom # flat_to_square(denom, dtype=np.float64) # computation was done on int type
     denom_square /= scale_factor ** 2
     print("Max error for numerator: %.3e" % (ma(num_square - np.triu(num_ref))))
     print("Max error for denominator: %.3e" % (ma(denom_square - np.triu(denom_ref))))
@@ -222,7 +205,29 @@ def compare_results(n_frames, g2, std, num, denom, g2_ref, std_ref, num_ref, den
 
 
 
+
+
+# -----------------------------------------------------------------------------
+# --------------------------- Dataset and options choice ----------------------
+# -----------------------------------------------------------------------------
+
+
+# List of datasets to test
+# datasets_to_test = ["dataset01_scan0007", "dataset01_scan0008", "dataset01_scan0009",  "dataset01_scan0010", "dataset01_scan0011", "dataset01_scan0012", "dataset01_scan0013"]
+# datasets_to_test = ["dataset02", "dataset03"]
+datasets_to_test = ["dataset03"]
+# Data type for XPCS data. It is always be uint8 in practice, though dynamix code should work with other data types
+dtype = np.uint8
+# Whether to print information on datasets sparsity
+do_sparse_stats = True
+# Whether to print information on execution times
+print_timings = True
+# Whether to also test the space-based correlators.
+use_space_correlator = False
+
+
 if __name__ == "__main__":
-    benchmark_ttcf("dataset04", n_frames=100000)
+    # ttcf_time = benchmark_ttcf("dataset01_scan0009", n_frames=20000)
+    ttcf_time = benchmark_ttcf("dataset05", n_frames=20000)
     # for dataset_name in datasets_to_test:
         # benchmark_ttcf(dataset_name)
