@@ -39,7 +39,7 @@ datasets = {
         "reference_fname": "/scisoft/dynamix/data/dataset04/reference.npz", # GPU can do only 100k frames for now (with 40GB mem)
     },
     "dataset05": {
-        # dataset04: 1.2M frames
+        # dataset05: 1.2M frames
         "raw_data_fname": "/scisoft/dynamix/data/dataset05/dataset05_merged.h5",
         "data_fname": "/scisoft/dynamix/data/dataset05/xpcs_1200000.npz",
         "qmask_fname": "/scisoft/dynamix/data/dataset05/qmask_dummy.npy", # hand-crafted, using data < 10...
