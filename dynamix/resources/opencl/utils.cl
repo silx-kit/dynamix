@@ -76,6 +76,70 @@ kernel void build_flattened_scalar_correlation_matrix(
 
 
 
+
+static inline double2 update_variance(double2 avg_m2, int i, double newval) {
+    double avg = avg_m2.s0, m2 = avg_m2.s1;
+    double dev1 = newval - avg;
+    avg = (i*avg + newval)/(1+i);
+    double dev2 = newval - avg;
+    m2 += dev1 * dev2;
+    return (double2) (avg, m2);
+}
+
+
+/**
+Launched with (n_frames, n_bins) threads.
+
+Both numerator and denominator are stored as flattened matrix:
+  [ W items | W-1 items | W-2 items | ... | 1 item]    W = n_frames
+
+The aim is to compute
+  - sum(diag_num)
+  - sum(diag_denom)
+  - variance(diag_num / diag_denom)
+
+
+**/
+kernel void get_g2_and_std_v1(
+    const global RES_DTYPE* numerator,
+    const global RES_DTYPE* denominator,
+    global double* g2,
+    global double* std,
+    int n_frames,
+    int n_times,
+    int n_bins
+)
+{
+    uint tid = get_global_id(0);
+    uint qbin_idx = get_global_id(1);
+    if (qbin_idx >= n_bins || tid >= n_frames) return;
+
+    uint offset_for_qbin = ((n_frames * (n_times + 1)) / 2) * qbin_idx;
+
+    double sum_diag_num = 0, sum_diag_denom = 0;
+    double2 avg_m2 = (0, 0);
+
+    uint offset = 0;
+    for (uint i = 0; i < n_frames; i++) {
+        if (tid >= n_frames - i) break; // continue if workgroup
+        RES_DTYPE n = numerator[offset_for_qbin + offset + tid];
+        RES_DTYPE d = denominator[offset_for_qbin + offset + tid];
+
+        sum_diag_num += (double) n;
+        sum_diag_denom += (double) d;
+        avg_m2 = update_variance(avg_m2, i, n/ ((double) d));
+
+        offset += n_frames - i;
+        // barrier(CLK_GLOBAL_MEM_FENCE); // + big workgroup size
+
+    }
+    g2[qbin_idx * n_frames + tid] = sum_diag_num / sum_diag_denom;
+    std[qbin_idx * n_frames + tid] = sqrt(avg_m2.s1) / (n_frames - tid);
+}
+
+
+
+
 /*
     Reduction function used in compute_final_reductions().
     It uses four items:
@@ -158,22 +222,3 @@ kernel void compute_final_reductions(
 }
 
 */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
