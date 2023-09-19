@@ -184,52 +184,9 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
             return tuple(ret)
 
 
-    def cc(self, data, pixel_indices, offsets, bins="all", **kwargs):
-        """
-        Compute XPCS functions from space-compacted or time-compacted data.
-
-        Parameters
-        ----------
-        data: pyopencl.Array
-            space-comacted data or time-compacted data
-        pixel_indices: pyopencl.Array
-            For space-compacted data: pixel indices
-            For time-compacted data: times indices
-        offsets: pyopencl.Array
-            Frames offsets.
-            For space-compacted data: offsets[i+1] - offsets[i] is the number of non-zero elements in frame at time=i
-               i.e offsets[i+1] - offsets[i] = (xpcs_data_dense[i, :] > 0).sum()  # assuming 1D spatial indexing in the second axis
-            For time-compacted data: offsets[i+1] - offsets[i] is the number of non-zero elements at pixel location i
-               i.e offsets[i+1] - offsets[i] = (xpcs_data_dense[:, i] > 0).sum()  # assuming 1D spatial indexing in the second axis
-        return_num_and_denom: bool, optional
-            Whether to return the TTCF as (num, denom) instead of num/denom.
-        bins: str or list of int, optional
-            Bins values to compute the correlation function.
-            By default the computations are done on all scattering vectors defined in qmask.
 
 
-        Returns
-        --------
-        g2: numpy.ndarray
-            One-dimensional array of size 'n_frames': the g2 correlation function.
-        std: numpy.ndarray
-            One-dimensional array of size 'n_frames': the standard deviation on correlation function.
-        num_or_ttcf: numpy.ndarray
-            If return_num_and_denom is False, this is the normalized TTCF, i.e "num/denom".
-            If return_num_and_denom is True, this is "num".
-        denom: numpy.ndarray
-            If return_num_and_denom is False, this is None.
-            If return_num_and_denom is True, this is "denom".
-        """
-        # Build numerator (call subclass methods)
-        self.build_correlation_matrices(data, pixel_indices, offsets, **kwargs) # build_correlation_matrix() has some extra args
 
-        if bins == "all" or bins is None:
-            bins_indices = self.bins - 1
-        else:
-            bins_indices = bins
-        for bin_idx in bins_indices:
-            g2, std, _, _ = self._compute_final_ttcf(bin_idx, calc_std=True)
 
 
 
