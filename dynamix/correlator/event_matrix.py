@@ -229,7 +229,6 @@ class SMatrixEventCorrelator(MatrixEventCorrelatorBase):
         kernel_files = list(map(get_opencl_srcfile, self.kernel_files))
         self._compile_options = self._dtype_compilation_flags + [
             "-I%s" % path.dirname(get_opencl_srcfile("dtypes.h")),
-            "-DSHARED_ARRAYS_SIZE=%d" % 11000,  # for build_correlation_matrix_v2b, not working
         ]
         self.compile_kernels(
             kernel_files=kernel_files,
@@ -355,7 +354,6 @@ class TMatrixEventCorrelator(MatrixEventCorrelatorBase):
             "build_correlation_matrix_times_representation"
         )
         self.build_scalar_correlation_matrix = self.kernels.get_kernel("build_flattened_scalar_correlation_matrix")
-        self.get_g2_and_std_v1 = self.kernels.get_kernel("get_g2_and_std_v1")
 
     def build_correlation_matrices(self, data, times, offsets, check=True):
         """

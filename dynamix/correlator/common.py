@@ -205,6 +205,11 @@ class OpenclCorrelator(BaseCorrelator, OpenclProcessing):
         if self.qmask is not None:
             self.d_qmask = parray.to_device(self.queue, self.qmask)
         self._allocated = {}
+        # send scale_factors to device
+        self.allocate_array("d_scale_factors", (self.n_bins,), dtype=np.float64)
+        for bin_idx, scale_factor in enumerate(self.scale_factors.values()):
+            self.d_scale_factors[bin_idx] = scale_factor
+
 
     def _set_data(self, arrays):
         """
