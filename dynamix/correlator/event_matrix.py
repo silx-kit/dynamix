@@ -184,10 +184,32 @@ class MatrixEventCorrelatorBase(OpenclCorrelator):
             return tuple(ret)
 
 
+    def get_correlation_function_gpu(self):
+        get_g2_and_std_kernel = self.kernels.get_kernel("get_g2_and_std_v1")
 
+        d_std = self.allocate_array("std", (self.n_bins, self.n_times), dtype=np.float64)
+        d_g2 = self.allocate_array("g2", (self.n_bins, self.n_times), dtype=np.float64)
 
+        grid = (self.nframes, self.n_bins)
+        wg = None # TODO tune for performances
 
+        evt = get_g2_and_std_kernel(
+            self.queue,
+            grid,
+            wg,
+            self.d_corr_matrix.data,
+            self.d_sums_corr_matrix.data,
+            self.d_scale_factors.data,
+            d_g2.data,
+            d_std.data,
+            np.int32(self.nframes),
+            np.int32(self.n_times),
+            np.int32(self.n_bins)
+        )
+        evt.wait()
+        self.profile_add(evt, "get_g2_and_std")
 
+        return d_g2, d_std, self.d_corr_matrix.data, self.d_sums_corr_matrix.data
 
 
 

@@ -103,6 +103,7 @@ The aim is to compute
 kernel void get_g2_and_std_v1(
     const global RES_DTYPE* numerator,
     const global RES_DTYPE* denominator,
+    const global double* scale_factors,
     global double* g2,
     global double* std,
     int n_frames,
@@ -133,8 +134,8 @@ kernel void get_g2_and_std_v1(
         // barrier(CLK_GLOBAL_MEM_FENCE); // + big workgroup size
 
     }
-    g2[qbin_idx * n_frames + tid] = sum_diag_num / sum_diag_denom;
-    std[qbin_idx * n_frames + tid] = sqrt(avg_m2.s1) / (n_frames - tid);
+    g2[qbin_idx * n_frames + tid] = sum_diag_num / sum_diag_denom * scale_factors[qbin_idx];
+    std[qbin_idx * n_frames + tid] = sqrt(avg_m2.s1) / (n_frames - tid) * scale_factors[qbin_idx];
 }
 
 
